@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/db';
 import taskRoutes from './routes/taskRoutes';
+import agentRoutes from './routes/agentRoutes';
+import { initCron } from './config/cron';
 
 dotenv.config();
 
@@ -15,6 +17,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api/tasks', taskRoutes);
+app.use('/api/agent', agentRoutes);
 
 // Basic health check route
 app.get('/health', (req, res) => {
@@ -29,6 +32,7 @@ app.get('/health', (req, res) => {
 const startServer = async () => {
   try {
     await connectDB();
+    initCron();
     app.listen(PORT, () => {
       console.log(`Server running in development mode on port ${PORT}`);
     });
