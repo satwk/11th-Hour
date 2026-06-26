@@ -4,6 +4,7 @@ export interface IUser {
   firebaseId: string;
   email: string;
   googleAccessToken?: string;
+  googleRefreshToken?: string;
   calendarSyncEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -13,6 +14,7 @@ const UserSchema = new Schema<IUser>({
   firebaseId: { type: String, required: true, unique: true, index: true },
   email: { type: String, required: true },
   googleAccessToken: { type: String },
+  googleRefreshToken: { type: String },
   calendarSyncEnabled: { type: Boolean, default: false },
 }, {
   timestamps: true

@@ -34,7 +34,7 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
 
         <div className="flex justify-between items-center">
           <span className="text-xs text-[#8a8f98]">
-            Gemini 2.5 Flash model handles parsing.
+            Gemini 2.0 Flash model handles parsing.
           </span>
           <button
             type="submit"

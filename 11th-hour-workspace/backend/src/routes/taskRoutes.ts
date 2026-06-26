@@ -32,6 +32,20 @@ const taskSchema: GenAISchema = {
     externallyDependent: {
       type: SchemaType.BOOLEAN,
       description: 'True if the task involves waiting on someone else, delegation, or joint scheduling.'
+    },
+    scheduleConstraint: {
+      type: SchemaType.OBJECT,
+      properties: {
+        targetDate: {
+          type: SchemaType.STRING,
+          description: 'The exact calculated date in YYYY-MM-DD format based on today\'s date and relative mentions (e.g. "this Sunday", "next week", "tomorrow"). If a day/date is not mentioned, this must be null.'
+        },
+        timeOfDay: {
+          type: SchemaType.STRING,
+          description: 'General time of day constraint: "morning", "afternoon", "evening", or "any" if not specified.'
+        }
+      },
+      description: 'Optional schedule constraint details. Set to null or omit if no date/time constraint is specified.'
     }
   },
   required: ['title', 'quadrant', 'cognitiveLoad', 'estimatedDuration', 'externallyDependent']
@@ -84,44 +98,65 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
     // Get API key from environment
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'your-gemini-api-key-here') {
-      res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+      console.error("Missing Gemini API Key during request lifecycle");
+      res.status(500).json({ error: "Failed to parse brain dump. Please try again." });
       return;
     }
+
+    console.log('--- DIAGNOSTIC: Active Gemini Key Length:', apiKey.length, 'Ends with:', apiKey.slice(-4));
+
+    const currentDateTime = new Date().toLocaleString();
 
     // Initialize Gemini AI client
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      systemInstruction: `You are a highly efficient productivity assistant. Your task is to analyze the user's raw, unstructured "brain dump" text, identify all distinct tasks/actions mentioned, and categorize each task according to:
+      model: 'gemini-2.0-flash',
+      systemInstruction: `The current system date and time is: ${currentDateTime}. Use this as your absolute anchor to calculate any relative dates (like "Sunday" or "tomorrow") into strict ISO format for the targetDate field. You are a highly efficient productivity assistant. Your task is to analyze the user's raw, unstructured "brain dump" text, identify all distinct tasks/actions mentioned, and categorize each task according to:
 1. Eisenhower Quadrant:
-   - 'Do': Urgent & Important (immediate action, high stakes)
-   - 'Schedule': Important, Not Urgent (long-term value, no immediate deadline)
-   - 'Delegate': Urgent, Not Important (needs fast completion, can/should be done by someone else or requires waiting/dependency)
-   - 'Delete': Not Urgent, Not Important (low value, distraction, clutter)
-2. Cognitive Load:
-   - 'Low': Quick/routine task needing minimal focus (e.g. email reply, quick call)
-   - 'Medium': Moderate focus/effort (e.g. drafting document, prep work)
-   - 'High': Deep focus, intense problem solving (e.g. coding complex logic, deep research)
+   - 'Do': Urgent & Important (immediate action, high stakes).
+     CRITICAL RULE: Strictly classify routine daily chores, errands, and physical tasks (e.g., walking the dog, buying food, doing laundry, grocery shopping, washing dishes) as 'Schedule' or 'Delegate', NEVER 'Do' (Do First), unless the user explicitly uses words like 'Emergency', 'ASAP', or 'urgently'.
+   - 'Schedule': Important, Not Urgent (long-term value, chores/errands that need doing but aren't emergencies).
+   - 'Delegate': Urgent, Not Important (can/should be done by someone else, or requires waiting/dependency).
+   - 'Delete': Not Urgent, Not Important (low value, distraction).
+2. Cognitive Load (differentiate strictly):
+   - 'Low': Quick/routine task needing minimal focus (e.g. routine admin, sending quick replies, quick errands, picking up groceries).
+   - 'Medium': Moderate focus/effort (e.g. drafting basic emails, standard prep work).
+   - 'High': Deep focus, intense problem solving, or heavy mental concentration (e.g. refactoring code, debugging, writing math papers, architectural design, engineering specs). DO NOT categorize these high-concentration tasks as Medium or Low.
 3. Estimated Duration: Integer representing minutes.
 4. Externally Dependent: Boolean. Set to true if the task involves waiting on someone else, delegation, or joint scheduling.
-5. Title: Active, short, action-oriented title (e.g. "Email Sarah about slides", not "Sarah email feedback").`,
+5. Schedule Constraint: If the user mentions a day (e.g., 'this Sunday', 'next week', 'tomorrow'), calculate the exact future date (YYYY-MM-DD) based on today's date.
+   - Put this calculated ISO string in scheduleConstraint.targetDate.
+   - For relative dates:
+     - 'tomorrow' is today + 1 day.
+     - 'this Sunday' is the upcoming Sunday.
+     - 'next week' is typically 7 days from today (or the start of the next week, e.g., next Monday). Be logical.
+     - If no specific date/day is mentioned, targetDate should be null.
+   - Extract any time of day constraint ('morning', 'afternoon', 'evening', 'any') and place it in scheduleConstraint.timeOfDay. Default to 'any' if none is mentioned.
+6. Title: Active, short, action-oriented title (e.g. "Email Sarah about slides", not "Sarah email feedback").`,
     });
 
     const prompt = `Here is my brain dump: "${rawText}". Extract and structure all the tasks described.`;
 
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: responseSchema,
-      },
-    });
+    let parsedTasks: any[] = [];
+    try {
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: responseSchema,
+        },
+      });
 
-    const responseText = result.response.text();
-    const parsedTasks = JSON.parse(responseText);
+      const responseText = result.response.text();
+      parsedTasks = JSON.parse(responseText);
 
-    if (!Array.isArray(parsedTasks)) {
-      throw new Error('Gemini did not return an array of tasks.');
+      if (!Array.isArray(parsedTasks)) {
+        throw new Error('Gemini did not return an array of tasks.');
+      }
+    } catch (error) {
+      console.error("Gemini API Error:", error);
+      res.status(500).json({ error: "Failed to parse brain dump. Please try again." });
+      return;
     }
 
     // Save parsed tasks to MongoDB under the user's _id
@@ -135,6 +170,7 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
           estimatedDuration: t.estimatedDuration,
           status: 'Not Started',
           externallyDependent: t.externallyDependent,
+          scheduleConstraint: t.scheduleConstraint || undefined
         });
         return await newTask.save();
       })

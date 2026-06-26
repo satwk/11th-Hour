@@ -132,7 +132,7 @@ export const runDailyReplan = async (
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.0-flash',
     systemInstruction: `You are an automated productivity agent. The user is experiencing low readiness today.
 Your job is to review the list of open "High" cognitive load tasks and recommend adjustments for ALL of them to reduce mental strain.
 Adjustments can be:

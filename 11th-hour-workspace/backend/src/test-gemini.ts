@@ -50,9 +50,9 @@ const responseSchema: GenAISchema = {
 
 const runTest = async () => {
   try {
-    console.log('Sending test brain-dump to Gemini 1.5 Flash...');
+    console.log('Sending test brain-dump to Gemini 2.0 Flash...');
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash',
       systemInstruction: 'You are a task categorizer that parses unstructured text dumps into a clean task schema.'
     });
 

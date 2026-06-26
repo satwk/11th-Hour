@@ -11,9 +11,6 @@ export const SyncPage: React.FC = () => {
     loading 
   } = useApp();
 
-  const [clientId, setClientId] = useState<string>(
-    localStorage.getItem('11h_google_client_id') || ''
-  );
   const [manualToken, setManualToken] = useState<string>('');
   const [freeBusySlots, setFreeBusySlots] = useState<any[]>([]);
   const [fbLoading, setFbLoading] = useState<boolean>(false);
@@ -36,25 +33,6 @@ export const SyncPage: React.FC = () => {
       }
     }
   }, []);
-
-  const handleSaveClientId = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const id = e.target.value;
-    setClientId(id);
-    localStorage.setItem('11h_google_client_id', id);
-  };
-
-  const handleGoogleLogin = () => {
-    if (!clientId.trim()) {
-      alert('Please enter a valid Google OAuth Client ID first. Retrieve one from your Google Cloud Console.');
-      return;
-    }
-    const redirectUri = window.location.origin + '/sync';
-    const scopes = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scopes)}&include_granted_scopes=true&state=auth_sync`;
-    
-    // Redirect to Google Consent screen
-    window.location.href = authUrl;
-  };
 
   const handleManualTokenSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +68,7 @@ export const SyncPage: React.FC = () => {
       setScheduling(true);
       setScheduleResult(null);
 
-      const res = await fetch(`${BACKEND_URL}/calendar/schedule-task`, {
+      const res = await fetch(`${BACKEND_URL}/calendar/schedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -147,21 +125,6 @@ export const SyncPage: React.FC = () => {
             </h2>
 
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-[#d0d6e0] mb-1.5 uppercase font-mono">
-                  Google Client ID
-                </label>
-                <input
-                  type="text"
-                  value={clientId}
-                  onChange={handleSaveClientId}
-                  placeholder="e.g. 123456-abcdef.apps.googleusercontent.com"
-                  className="w-full bg-[#141516] text-[#f7f8f8] border border-[#222326] rounded-md p-2.5 text-xs font-mono focus:outline-none focus:border-[#34343a] focus:ring-1 focus:ring-[#5e6ad2] transition-all"
-                />
-                <span className="text-[10px] text-[#62666d] mt-1 block">
-                  Add <code className="bg-[#141516] px-1 py-0.5 rounded font-mono border border-[#222326]">{window.location.origin}/sync</code> to your Authorized redirect URIs in Google Console.
-                </span>
-              </div>
 
               {googleConnected ? (
                 <div className="space-y-3 pt-2">
@@ -178,14 +141,13 @@ export const SyncPage: React.FC = () => {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-3 pt-2">
-                  <button
-                    onClick={handleGoogleLogin}
-                    disabled={loading}
-                    className="w-full bg-[#5e6ad2] hover:bg-[#828fff] text-white font-medium text-xs py-2.5 px-4 rounded-md transition-colors shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
+                <div className="space-y-3 pt-2 flex">
+                  <a
+                    href={`http://localhost:5000/api/auth/google?firebaseId=${TEST_USER.firebaseId}`}
+                    className="w-full bg-[#5e6ad2] hover:bg-[#828fff] text-white font-medium text-xs py-2.5 px-4 rounded-md transition-colors shadow-sm flex items-center justify-center space-x-2 cursor-pointer text-center decoration-none"
                   >
                     <span>Connect Google Calendar</span>
-                  </button>
+                  </a>
                 </div>
               )}
             </div>

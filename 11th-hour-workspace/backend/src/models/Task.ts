@@ -8,6 +8,10 @@ export interface ITask {
   estimatedDuration: number; // estimated duration in minutes
   status: 'Not Started' | 'In Progress' | 'Completed';
   externallyDependent: boolean;
+  scheduleConstraint?: {
+    targetDate?: string;
+    timeOfDay?: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +24,10 @@ const TaskSchema = new Schema<ITask>({
   estimatedDuration: { type: Number, required: true },
   status: { type: String, enum: ['Not Started', 'In Progress', 'Completed'], default: 'Not Started', index: true },
   externallyDependent: { type: Boolean, default: false },
+  scheduleConstraint: {
+    targetDate: { type: String },
+    timeOfDay: { type: String }
+  },
 }, {
   timestamps: true
 });
