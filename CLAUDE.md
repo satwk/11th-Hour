@@ -3,7 +3,7 @@
 ## STEERING DIRECTIVES
 Always use:
 1. `vercel-react-best-practices`, `tailwind-4-docs` and `web-design-guidelines` skills for all frontend development.
-2. STRICT UI ADHERENCE: Read and strictly follow `DESIGN.md` for the entire visual theme and the specific custom UI interactions.
+2. STRICT UI ADHERENCE: Read and strictly follow `DESIGN.md` for the entire visual theme and the specific custom UI interactions. Enforce a dark mode theme, subtle borders, glowing accents, and sleek, compact typography. No generic white cards.
 3. STRICT GOOGLE GEN AI SDK USAGE: Utilize `@google/generative-ai` inside the backend. Do NOT fall back on deprecated packages.
 4. CORE PRINCIPLE: The "Daily Agent Loop" (`PlanRevision` model + `/api/agent/*` routes) is the main structural differentiator. Fully build out and test this backend logic BEFORE polishing the user interface.
 

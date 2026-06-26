@@ -154,4 +154,61 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
   }
 });
 
+// GET /api/tasks - Retrieve all tasks for a user
+router.get('/', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { userId, firebaseId } = req.query;
+
+    if (!userId && !firebaseId) {
+      res.status(400).json({ error: 'userId or firebaseId query parameter is required' });
+      return;
+    }
+
+    let user = null;
+    if (userId) {
+      try {
+        user = await User.findById(userId);
+      } catch (err) {}
+    }
+
+    if (!user && firebaseId) {
+      user = await User.findOne({ firebaseId: firebaseId as string });
+    }
+
+    if (!user) {
+      // If user does not exist, return an empty array for initial setup/onboarding
+      res.status(200).json([]);
+      return;
+    }
+
+    const tasks = await Task.find({ userId: (user as any)._id }).sort({ createdAt: -1 });
+    res.status(200).json(tasks);
+  } catch (error: any) {
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks', details: error.message });
+  }
+});
+
+// PATCH /api/tasks/:id - Update specific task fields (e.g. quadrant, status)
+router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    const task = await Task.findByIdAndUpdate(id, updates, { new: true });
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'Task updated successfully',
+      task
+    });
+  } catch (error: any) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ error: 'Failed to update task', details: error.message });
+  }
+});
+
 export default router;
