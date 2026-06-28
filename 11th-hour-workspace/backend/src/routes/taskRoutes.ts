@@ -20,10 +20,8 @@ const taskSchema: GenAISchema = {
       description: 'Eisenhower quadrant classification: Do (Urgent & Important), Schedule (Important, Not Urgent), Delegate (Urgent, Not Important), Delete (Not Urgent & Not Important).'
     },
     cognitiveLoad: {
-      type: SchemaType.STRING,
-      format: 'enum',
-      enum: ['Low', 'Medium', 'High'],
-      description: 'Cognitive load level needed for the task.'
+      type: SchemaType.INTEGER,
+      description: 'Cognitive load level needed for the task, numerically rated from 1 (very low focus/routine errand) to 5 (intense deep focus/high concentration).'
     },
     estimatedDuration: {
       type: SchemaType.INTEGER,
@@ -31,7 +29,7 @@ const taskSchema: GenAISchema = {
     },
     externallyDependent: {
       type: SchemaType.BOOLEAN,
-      description: 'True if the task involves waiting on someone else, delegation, or joint scheduling.'
+      description: 'True if the task involves waiting on someone else, delegation, joint scheduling, or external human communication/blockers (e.g., "email professor", "call landlord", "wait for feedback").'
     },
     scheduleConstraint: {
       type: SchemaType.OBJECT,
@@ -110,7 +108,7 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
     // Initialize Gemini AI client
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.1-flash-lite',
       systemInstruction: `The current system date and time is: ${currentDateTime}. Use this as your absolute anchor to calculate any relative dates (like "Sunday" or "tomorrow") into strict ISO format for the targetDate field. You are a highly efficient productivity assistant. Your task is to analyze the user's raw, unstructured "brain dump" text, identify all distinct tasks/actions mentioned, and categorize each task according to:
 1. Eisenhower Quadrant:
    - 'Do': Urgent & Important (immediate action, high stakes).
@@ -119,11 +117,9 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
    - 'Delegate': Urgent, Not Important (can/should be done by someone else, or requires waiting/dependency).
    - 'Delete': Not Urgent, Not Important (low value, distraction).
 2. Cognitive Load (differentiate strictly):
-   - 'Low': Quick/routine task needing minimal focus (e.g. routine admin, sending quick replies, quick errands, picking up groceries).
-   - 'Medium': Moderate focus/effort (e.g. drafting basic emails, standard prep work).
-   - 'High': Deep focus, intense problem solving, or heavy mental concentration (e.g. refactoring code, debugging, writing math papers, architectural design, engineering specs). DO NOT categorize these high-concentration tasks as Medium or Low.
+   Evaluate the cognitive complexity of each parsed task numerically and assign it a cognitiveLoad score from 1 (very low focus/routine errand) to 5 (high deep focus/intense concentration).
 3. Estimated Duration: Integer representing minutes.
-4. Externally Dependent: Boolean. Set to true if the task involves waiting on someone else, delegation, or joint scheduling.
+4. Externally Dependent: Boolean. Set to true if the task involves waiting on someone else, delegation, joint scheduling, or external human communication/blockers (e.g., "email professor", "call landlord", "wait for response").
 5. Schedule Constraint: If the user mentions a day (e.g., 'this Sunday', 'next week', 'tomorrow'), calculate the exact future date (YYYY-MM-DD) based on today's date.
    - Put this calculated ISO string in scheduleConstraint.targetDate.
    - For relative dates:

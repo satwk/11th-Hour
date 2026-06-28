@@ -6,6 +6,7 @@ import taskRoutes from './routes/taskRoutes';
 import agentRoutes from './routes/agentRoutes';
 import calendarRoutes from './routes/calendarRoutes';
 import authRoutes from './routes/authRoutes';
+import readinessRoutes from './routes/readinessRoutes';
 import { initCron } from './config/cron';
 
 dotenv.config();
@@ -22,6 +23,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/readiness', readinessRoutes);
 
 // Basic health check route
 app.get('/health', (req, res) => {

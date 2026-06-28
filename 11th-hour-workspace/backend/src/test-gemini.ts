@@ -25,10 +25,8 @@ const taskSchema: GenAISchema = {
       description: 'Eisenhower quadrant classification.'
     },
     cognitiveLoad: {
-      type: SchemaType.STRING,
-      format: 'enum',
-      enum: ['Low', 'Medium', 'High'],
-      description: 'Cognitive load level needed for the task.'
+      type: SchemaType.INTEGER,
+      description: 'Cognitive load level needed for the task, numerically rated from 1 (very low focus/routine errand) to 5 (intense deep focus/high concentration).'
     },
     estimatedDuration: {
       type: SchemaType.INTEGER,
@@ -36,7 +34,7 @@ const taskSchema: GenAISchema = {
     },
     externallyDependent: {
       type: SchemaType.BOOLEAN,
-      description: 'True if the task involves waiting on someone else or delegation.'
+      description: 'True if the task involves waiting on someone else, delegation, joint scheduling, or external human communication/blockers (e.g., "email professor", "call landlord", "wait for feedback").'
     }
   },
   required: ['title', 'quadrant', 'cognitiveLoad', 'estimatedDuration', 'externallyDependent']
@@ -50,9 +48,9 @@ const responseSchema: GenAISchema = {
 
 const runTest = async () => {
   try {
-    console.log('Sending test brain-dump to Gemini 2.0 Flash...');
+    console.log('Sending test brain-dump to Gemini 3.1 Flash Lite...');
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.1-flash-lite',
       systemInstruction: 'You are a task categorizer that parses unstructured text dumps into a clean task schema.'
     });
 

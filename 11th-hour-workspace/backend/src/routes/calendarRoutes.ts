@@ -358,7 +358,7 @@ router.post('/schedule', async (req: Request, res: Response): Promise<void> => {
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.1-flash-lite',
         systemInstruction: `The current system date and time is: ${currentDateTime}. Use this as your absolute anchor to calculate any relative dates (like "Sunday" or "tomorrow") into strict ISO format for the targetDate field. You are an expert productivity coach.
 Your job is to take a user's task and create a highly actionable, focused "micro-chunk" title (up to 40 characters) representing a single-sitting deliverable.
 Also write specific, actionable steps to list as instructions in the event description.

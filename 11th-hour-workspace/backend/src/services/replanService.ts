@@ -112,8 +112,8 @@ export const runDailyReplan = async (
     status: { $ne: 'Completed' }
   });
 
-  // Filter tasks with 'High' cognitive load
-  const highLoadTasks = openTasks.filter(t => t.cognitiveLoad === 'High');
+  // Filter tasks with high cognitive load (score 4 or 5)
+  const highLoadTasks = openTasks.filter(t => t.cognitiveLoad >= 4);
 
   if (highLoadTasks.length === 0) {
     return {
@@ -132,7 +132,7 @@ export const runDailyReplan = async (
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.1-flash-lite',
     systemInstruction: `You are an automated productivity agent. The user is experiencing low readiness today.
 Your job is to review the list of open "High" cognitive load tasks and recommend adjustments for ALL of them to reduce mental strain.
 Adjustments can be:

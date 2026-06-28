@@ -43,7 +43,7 @@ const runTest = async () => {
       userId: user._id,
       title: 'Write complex thesis section on agent neural search',
       quadrant: 'Do',
-      cognitiveLoad: 'High',
+      cognitiveLoad: 5,
       estimatedDuration: 180,
       status: 'Not Started',
       externallyDependent: false
@@ -53,7 +53,7 @@ const runTest = async () => {
       userId: user._id,
       title: 'Book dentist checkup',
       quadrant: 'Schedule',
-      cognitiveLoad: 'Low',
+      cognitiveLoad: 1,
       estimatedDuration: 15,
       status: 'Not Started',
       externallyDependent: false
@@ -63,7 +63,7 @@ const runTest = async () => {
       userId: user._id,
       title: 'Wait for database cluster access review from IT lead',
       quadrant: 'Delegate',
-      cognitiveLoad: 'Medium',
+      cognitiveLoad: 3,
       estimatedDuration: 30,
       status: 'In Progress',
       externallyDependent: true
@@ -73,7 +73,7 @@ const runTest = async () => {
       userId: user._id,
       title: 'Refactor production billing microservice with CTO',
       quadrant: 'Do',
-      cognitiveLoad: 'High',
+      cognitiveLoad: 5,
       estimatedDuration: 120,
       status: 'Not Started',
       externallyDependent: true
