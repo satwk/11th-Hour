@@ -1,37 +1,39 @@
-import { Schema, model, Types } from 'mongoose';
+import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IPlanChange {
   taskId: Types.ObjectId;
-  action: 'Task Reslotted' | 'Urgency Downgraded' | 'Draft ready';
+  action: 'reslot' | 'rechunk' | 'downgrade' | 'draft-message' | 'requeue';
   reason: string;
-  proposedSlot?: string;
+  proposedSlot?: {
+    start?: Date;
+    end?: Date;
+  };
   draftMessage?: string;
 }
 
-export interface IPlanRevision {
+export interface IPlanRevision extends Document {
   userId: Types.ObjectId;
-  triggerType: 'daily-replan' | 'manual';
+  generatedAt: Date;
+  triggerType: 'scheduled' | 'manual' | 'escalation';
   changes: IPlanChange[];
   userConfirmed: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  confirmedAt?: Date;
 }
 
-const PlanChangeSchema = new Schema<IPlanChange>({
-  taskId: { type: Schema.Types.ObjectId, ref: 'Task', required: true },
-  action: { type: String, enum: ['Task Reslotted', 'Urgency Downgraded', 'Draft ready'], required: true },
-  reason: { type: String, required: true },
-  proposedSlot: { type: String },
-  draftMessage: { type: String },
-}, { _id: false });
-
 const PlanRevisionSchema = new Schema<IPlanRevision>({
-  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  triggerType: { type: String, enum: ['daily-replan', 'manual'], required: true },
-  changes: { type: [PlanChangeSchema], default: [] },
-  userConfirmed: { type: Boolean, default: false, index: true },
-}, {
-  timestamps: true
+  userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  generatedAt: { type: Date, default: Date.now },
+  triggerType: { type: String, enum: ['scheduled', 'manual', 'escalation'], required: true },
+  changes: [{
+    taskId: { type: Schema.Types.ObjectId, ref: 'Task' },
+    action: { type: String, enum: ['reslot', 'rechunk', 'downgrade', 'draft-message', 'requeue'] },
+    reason: String,
+    proposedSlot: { start: Date, end: Date },
+    draftMessage: String
+  }],
+  userConfirmed: { type: Boolean, default: false },
+  confirmedAt: Date
 });
 
-export const PlanRevision = model<IPlanRevision>('PlanRevision', PlanRevisionSchema);
+export const PlanRevision = mongoose.model<IPlanRevision>('PlanRevision', PlanRevisionSchema);
+export default PlanRevision;

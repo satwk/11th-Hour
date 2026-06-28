@@ -5,7 +5,8 @@ import {
   useSensor, 
   useSensors, 
   PointerSensor, 
-  TouchSensor 
+  TouchSensor,
+  closestCorners
 } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
@@ -62,17 +63,43 @@ export const DashboardPage: React.FC = () => {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveId(null);
+    const result = { destination: event.over };
+    if (!result.destination) return;
     const { active, over } = event;
-    if (!over) return;
 
     const taskId = active.id as string;
-    const targetQuadrant = over.id as 'Do' | 'Schedule' | 'Delegate' | 'Delete';
+    let targetQuadrant = over.id as string;
+
+    // If targetQuadrant is a taskId (meaning dropped on another task card), resolve its actual quadrant
+    if (targetQuadrant !== 'Do' && targetQuadrant !== 'Schedule' && targetQuadrant !== 'Delegate' && targetQuadrant !== 'Delete') {
+      const targetTask = tasks.find((t) => t._id === targetQuadrant);
+      if (targetTask) {
+        targetQuadrant = targetTask.quadrant;
+      } else {
+        return;
+      }
+    }
 
     const task = tasks.find((t) => t._id === taskId);
-    if (!task || task.quadrant === targetQuadrant) return;
+    if (!task) return;
+
+    if (task.quadrant === targetQuadrant) {
+      // Reorder within the same quadrant
+      const oldIndex = tasks.findIndex((t) => t._id === taskId);
+      const newIndex = tasks.findIndex((t) => t._id === over.id);
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+        setTasks((prev) => {
+          const updated = [...prev];
+          const [moved] = updated.splice(oldIndex, 1);
+          updated.splice(newIndex, 0, moved);
+          return updated;
+        });
+      }
+      return;
+    }
 
     setTasks((prev) =>
-      prev.map((t) => (t._id === taskId ? { ...t, quadrant: targetQuadrant } : t))
+      prev.map((t) => (t._id === taskId ? { ...t, quadrant: targetQuadrant as any } : t))
     );
 
     try {
@@ -181,6 +208,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <DndContext 
             sensors={sensors} 
+            collisionDetection={closestCorners}
             onDragStart={(event) => setActiveId(event.active.id as string)}
             onDragCancel={() => setActiveId(null)}
             onDragEnd={handleDragEnd}
@@ -202,6 +230,8 @@ export const DashboardPage: React.FC = () => {
               plan={activePlan}
               onCommit={handleCommitPlan}
               onDismiss={() => setActivePlan(null)}
+              onSyncComplete={fetchTasks}
+              refreshTasks={fetchTasks}
               loading={loading}
             />
           ) : (

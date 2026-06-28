@@ -64,7 +64,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const res = await fetch(`${BACKEND_URL}/tasks?firebaseId=${TEST_USER.firebaseId}`);
       if (!res.ok) throw new Error('Failed to fetch tasks');
       const data = await res.json();
-      setTasks(data);
+      const sanitized = Array.isArray(data)
+        ? data.map((t: any) => {
+            if (t.quadrant !== 'Do' && t.quadrant !== 'Schedule' && t.quadrant !== 'Delegate' && t.quadrant !== 'Delete') {
+              console.warn(`Recovered task ${t._id} with invalid quadrant ${t.quadrant}. Resetting to Do.`);
+              return { ...t, quadrant: 'Do' };
+            }
+            return t;
+          })
+        : [];
+      setTasks(sanitized);
       setApiError(null);
     } catch (err: any) {
       console.error(err);

@@ -109,7 +109,9 @@ const runTest = async () => {
           console.log(`  Task: "${c.taskId?.title}"`);
           console.log(`  Action: ${c.action}`);
           console.log(`  Reason: ${c.reason}`);
-          if (c.proposedSlot) console.log(`  Proposed Slot: ${c.proposedSlot}`);
+          if (c.proposedSlot && c.proposedSlot.start) {
+            console.log(`  Proposed Slot: Start: ${c.proposedSlot.start.toISOString ? c.proposedSlot.start.toISOString() : c.proposedSlot.start}, End: ${c.proposedSlot.end?.toISOString ? c.proposedSlot.end.toISOString() : c.proposedSlot.end}`);
+          }
           if (c.draftMessage) console.log(`  Draft Message: "${c.draftMessage}"`);
         });
       }

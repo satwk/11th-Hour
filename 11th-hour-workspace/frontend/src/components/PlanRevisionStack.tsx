@@ -24,6 +24,8 @@ interface PlanRevisionStackProps {
   plan: PlanRevision | null;
   onCommit: (acceptedChanges: PlanChange[]) => Promise<void>;
   onDismiss: () => void;
+  onSyncComplete?: () => void;
+  refreshTasks?: () => void;
   loading: boolean;
 }
 
@@ -31,6 +33,8 @@ export const PlanRevisionStack: React.FC<PlanRevisionStackProps> = ({
   plan,
   onCommit,
   onDismiss,
+  onSyncComplete,
+  refreshTasks,
   loading
 }) => {
   const [selectedChanges, setSelectedChanges] = useState<Record<number, boolean>>({});
@@ -74,9 +78,15 @@ export const PlanRevisionStack: React.FC<PlanRevisionStackProps> = ({
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const accepted = plan.changes.filter((_, idx) => selectedChanges[idx]);
-    onCommit(accepted);
+    await onCommit(accepted);
+    if (refreshTasks) {
+      refreshTasks();
+    }
+    if (onSyncComplete) {
+      onSyncComplete();
+    }
   };
 
   return (
@@ -98,7 +108,7 @@ export const PlanRevisionStack: React.FC<PlanRevisionStackProps> = ({
       <div className="space-y-4 mb-6">
         {plan.changes.map((change, idx) => {
           const isSelected = selectedChanges[idx] ?? true;
-          const taskTitle = change.taskId?.title || 'Unknown Task';
+          const taskTitle = change.taskId?.title || 'Untitled Task';
 
           return (
             <div

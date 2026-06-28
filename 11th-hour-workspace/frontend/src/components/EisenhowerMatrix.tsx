@@ -30,10 +30,25 @@ export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
 }) => {
   const openTasks = tasks.filter((t) => t.status !== 'Completed');
 
-  const doTasks = openTasks.filter((t) => t.quadrant === 'Do');
-  const scheduleTasks = openTasks.filter((t) => t.quadrant === 'Schedule');
-  const delegateTasks = openTasks.filter((t) => t.quadrant === 'Delegate');
-  const deleteTasks = openTasks.filter((t) => t.quadrant === 'Delete');
+  const getNumericLoad = (load: any): number => {
+    if (typeof load === 'number') return load;
+    if (!load) return 1;
+    const s = String(load).toLowerCase();
+    if (s === 'high' || s === '5' || s === '4') return 5;
+    if (s === 'medium' || s === '3') return 3;
+    if (s === 'low' || s === '2' || s === '1') return 1;
+    const num = parseInt(s, 10);
+    return isNaN(num) ? 1 : num;
+  };
+
+  const sortTasksByLoad = (taskList: typeof openTasks) => {
+    return [...taskList].sort((a, b) => getNumericLoad(b.cognitiveLoad) - getNumericLoad(a.cognitiveLoad));
+  };
+
+  const doTasks = sortTasksByLoad(openTasks.filter((t) => t.quadrant === 'Do'));
+  const scheduleTasks = sortTasksByLoad(openTasks.filter((t) => t.quadrant === 'Schedule'));
+  const delegateTasks = sortTasksByLoad(openTasks.filter((t) => t.quadrant === 'Delegate'));
+  const deleteTasks = sortTasksByLoad(openTasks.filter((t) => t.quadrant === 'Delete'));
 
   const activeTask = activeId ? tasks.find((t) => t._id === activeId) : null;
 

@@ -27,20 +27,30 @@ const planChangeSchema: GenAISchema = {
     action: {
       type: SchemaType.STRING,
       format: 'enum',
-      enum: ['Task Reslotted', 'Urgency Downgraded', 'Draft ready'],
-      description: 'The type of AI recommendation: Task Reslotted (slot/time change), Urgency Downgraded (quadrant downgrade), Draft ready (delegation draft).'
+      enum: ['reslot', 'rechunk', 'downgrade', 'draft-message', 'requeue'],
+      description: 'The type of AI recommendation: reslot (slot/time change), downgrade (quadrant downgrade), draft-message (delegation draft).'
     },
     reason: {
       type: SchemaType.STRING,
       description: 'Clear, user-friendly reasoning of why this task is being adjusted, referencing the low energy/readiness score.'
     },
     proposedSlot: {
-      type: SchemaType.STRING,
-      description: 'Optional. Propose a new slot or quadrant (e.g. "Tomorrow morning", "Quadrant: Schedule").'
+      type: SchemaType.OBJECT,
+      properties: {
+        start: {
+          type: SchemaType.STRING,
+          description: 'Proposed start time in YYYY-MM-DDTHH:mm:ssZ format (e.g., 2026-06-29T09:00:00Z).'
+        },
+        end: {
+          type: SchemaType.STRING,
+          description: 'Proposed end time in YYYY-MM-DDTHH:mm:ssZ format (e.g., 2026-06-29T10:00:00Z).'
+        }
+      },
+      description: 'Optional proposed start/end slot if action is reslot.'
     },
     draftMessage: {
       type: SchemaType.STRING,
-      description: 'Optional. If action is "Draft ready", write a polite message to delegate this task to a colleague.'
+      description: 'Optional. If action is "draft-message", write a polite message to delegate this task to a colleague.'
     }
   },
   required: ['taskId', 'action', 'reason']
@@ -135,10 +145,11 @@ export const runDailyReplan = async (
     model: 'gemini-3.1-flash-lite',
     systemInstruction: `You are an automated productivity agent. The user is experiencing low readiness today.
 Your job is to review the list of open "High" cognitive load tasks and recommend adjustments for ALL of them to reduce mental strain.
-Adjustments can be:
-- 'Task Reslotted': Push the task to a future slot (e.g. tomorrow, next week).
-- 'Urgency Downgraded': Demote the task from 'Do' to 'Schedule' (since it can wait) or 'Schedule' to 'Delegate'.
-- 'Draft ready': Propose to delegate the task and write a draft message they can copy-paste to send to a colleague.
+The current system date and time is: ${new Date().toISOString()}. Use this as your absolute anchor to calculate any relative dates (like "tomorrow") into strict YYYY-MM-DDTHH:mm:ssZ format for proposedSlot.start and proposedSlot.end (e.g., "2026-06-29T09:00:00Z"). Do not repeat or loop time tokens.
+Adjustments must map strictly to:
+- 'reslot': Push the task to a future slot (e.g. tomorrow, next week). Assign start and end Date strings inside proposedSlot.
+- 'downgrade': Demote the task quadrant from 'Do' to 'Schedule' (since it can wait) or 'Schedule' to 'Delegate'.
+- 'draft-message': Propose to delegate the task and write a draft message they can copy-paste to send to a colleague.
 
 Provide custom, helpful reasoning for each adjustment, referencing directly the user's low energy state.
 Format the output as a JSON array matching the provided schema.`
@@ -163,7 +174,14 @@ Propose adjustments to reschedule, downgrade, or delegate these tasks to lower t
   });
 
   const responseText = result.response.text();
-  const parsedChanges = JSON.parse(responseText);
+  let parsedChanges;
+  try {
+    parsedChanges = JSON.parse(responseText);
+  } catch (err: any) {
+    console.error(`Error: Failed to parse Gemini response of length ${responseText.length}.`);
+    console.error("Response preview:", responseText.slice(0, 1000));
+    throw err;
+  }
 
   if (!Array.isArray(parsedChanges)) {
     throw new Error('Gemini did not return a valid array of changes.');
@@ -174,11 +192,19 @@ Propose adjustments to reschedule, downgrade, or delegate these tasks to lower t
   for (const c of parsedChanges) {
     const matchingTask = highLoadTasks.find(t => t._id.toString() === c.taskId);
     if (matchingTask) {
+      let proposedSlot = undefined;
+      if (c.proposedSlot && c.proposedSlot.start && c.proposedSlot.end) {
+        const startD = new Date(c.proposedSlot.start);
+        const endD = new Date(c.proposedSlot.end);
+        if (!isNaN(startD.getTime()) && !isNaN(endD.getTime())) {
+          proposedSlot = { start: startD, end: endD };
+        }
+      }
       planRevisionChanges.push({
         taskId: matchingTask._id,
-        action: c.action as 'Task Reslotted' | 'Urgency Downgraded' | 'Draft ready',
+        action: c.action as 'reslot' | 'rechunk' | 'downgrade' | 'draft-message' | 'requeue',
         reason: c.reason,
-        proposedSlot: c.proposedSlot,
+        proposedSlot,
         draftMessage: c.draftMessage
       });
     }
@@ -195,7 +221,7 @@ Propose adjustments to reschedule, downgrade, or delegate these tasks to lower t
 
   const planRevision = new PlanRevision({
     userId: user._id,
-    triggerType: 'daily-replan',
+    triggerType: 'scheduled',
     changes: planRevisionChanges,
     userConfirmed: false
   });

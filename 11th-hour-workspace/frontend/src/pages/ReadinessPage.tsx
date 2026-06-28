@@ -16,6 +16,22 @@ export const ReadinessPage: React.FC = () => {
   const handleReplan = async (stats: { energyLevel: number; sleepHours: number; dailyWinsCount: number }) => {
     try {
       setLoading(true);
+
+      // Log readiness stats to persist daily score in database
+      const logRes = await fetch(`${BACKEND_URL}/readiness/log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseId: TEST_USER.firebaseId,
+          sleepHours: stats.sleepHours,
+          energyLevel: stats.energyLevel,
+          dailyWinsCount: stats.dailyWinsCount
+        })
+      });
+      if (!logRes.ok) throw new Error('Failed to save readiness log');
+      const logData = await logRes.json();
+
+      // Trigger daily replanning engine
       const res = await fetch(`${BACKEND_URL}/agent/daily-replan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -26,8 +42,10 @@ export const ReadinessPage: React.FC = () => {
       });
       if (!res.ok) throw new Error('Failed to run replan engine');
       const data = await res.json();
-      setReadinessScore(data.score);
-      setLocalScore(data.score);
+      
+      const finalScore = logData.calculatedScore !== undefined ? logData.calculatedScore : data.score;
+      setReadinessScore(finalScore);
+      setLocalScore(finalScore);
       
       if (data.planRevision) {
         setActivePlan(data.planRevision);
