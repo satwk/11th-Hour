@@ -135,29 +135,19 @@ export const DashboardPage: React.FC = () => {
 
   const handleCommitPlan = async (acceptedChanges: any[]) => {
     try {
-      await Promise.all(
-        acceptedChanges.map(async (c: any) => {
-          if (!c.taskId) return;
-          const taskId = c.taskId._id || c.taskId;
+      const approvedTaskIds = acceptedChanges
+        .map((c: any) => (c.taskId ? (c.taskId._id || c.taskId) : null))
+        .filter(Boolean);
 
-          let updates: any = {};
-          if (c.action === 'Urgency Downgraded') {
-            const originalTask = tasks.find(t => t._id === taskId);
-            if (originalTask) {
-              if (originalTask.quadrant === 'Do') updates.quadrant = 'Schedule';
-              else if (originalTask.quadrant === 'Schedule') updates.quadrant = 'Delegate';
-            }
-          } else if (c.action === 'Task Reslotted') {
-            updates.status = 'In Progress';
-          }
+      const confirmRes = await fetch(`${BACKEND_URL}/agent/plan-revisions/${activePlan._id}/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvedTaskIds })
+      });
 
-          await fetch(`${BACKEND_URL}/tasks/${taskId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates)
-          });
-        })
-      );
+      if (!confirmRes.ok) {
+        throw new Error('Failed to confirm plan revisions on backend');
+      }
 
       await fetch(`${BACKEND_URL}/calendar/commit`, {
         method: 'POST',

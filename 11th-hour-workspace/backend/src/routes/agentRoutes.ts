@@ -154,7 +154,8 @@ You must apply these rules strictly:
 1. Cognitive Load Cap: Today's scheduled tasks cannot exceed a hard ceiling of 15 aggregate cognitiveLoad points. (Calculated by summing the cognitiveLoad of all active, scheduled tasks for today). If the sum exceeds 15, you must select lower-priority tasks to 'downgrade' (reduce cognitive load) or 'requeue' (defer to tomorrow).
 2. Energy Level Drop: If the readiness score is below 60, any task with a cognitiveLoad >= 4 must be automatically deferred or pushed to later in the evening (action 'reslot' or 'requeue'), citing the low score as the transparent logic justification in the reason field.
 3. Schedule slots: When recommending 'reslot' or 'rechunk', assign proposed start and end times (proposedSlot.start and proposedSlot.end) that fit cleanly inside the provided free calendar gaps.
-4. Output Formatting: Return a JSON array matching the response schema. Every modification must contain a clear, human-readable, one-sentence explanation in the reason field. Do not modify tasks that do not need changes.`
+4. Output Formatting: Return a JSON array matching the response schema. Every modification must contain a clear, human-readable, one-sentence explanation in the reason field. Do not modify tasks that do not need changes.
+   - You must generate a UNIQUE, 1-sentence reason for why each specific task is being deferred. Do NOT output generic statements about exceeding the cognitive limit. Evaluate the task's title. Example: 'Since your readiness is low today, studying for Operating Systems can be pushed to tomorrow morning when your focus is higher.'`
     });
 
     const planChangeSchema: GenAISchema = {
@@ -334,6 +335,7 @@ router.get('/plan-revisions/latest', async (req: Request, res: Response): Promis
 router.post('/plan-revisions/:id/confirm', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const { approvedTaskIds } = req.body; // Array of taskId strings checked on the frontend
 
     // 1. Find the PlanRevision document
     const planRevision = await PlanRevision.findById(id);
@@ -347,21 +349,35 @@ router.post('/plan-revisions/:id/confirm', async (req: Request, res: Response): 
     planRevision.confirmedAt = new Date();
     await planRevision.save();
 
-    // 3. Iterate through changes and physically update the Task documents
+    // 3. Iterate through changes and physically update the Task documents using Smart Deferral logic
     if (planRevision.changes && planRevision.changes.length > 0) {
-      for (const change of planRevision.changes) {
-        if (!change.taskId) continue;
+      // Filter to execute only for tasks the user approved (checked)
+      const approvedChanges = planRevision.changes.filter(change => 
+        change.taskId && approvedTaskIds && approvedTaskIds.includes(change.taskId.toString())
+      );
 
-        const updates: any = {};
-        // Logic map: If the AI action is requeue or downgrade, update the task's matrixQuadrant / quadrant to 'Schedule' (to defer it)
-        if (change.action === 'requeue' || change.action === 'downgrade') {
-          updates.quadrant = 'Schedule';
-          updates.matrixQuadrant = 'Schedule';
+      for (const change of approvedChanges) {
+        const task = await Task.findById(change.taskId);
+        if (!task) continue;
+
+        // Math: A deferred task inherently loses immediate urgency.
+        task.isUrgent = false; 
+        
+        if (task.isImportant) {
+          task.matrixQuadrant = 'Schedule';
+          task.quadrant = 'Schedule';
+        } else {
+          task.matrixQuadrant = 'Delegate';
+          task.quadrant = 'Delegate';
         }
 
-        if (Object.keys(updates).length > 0) {
-          await Task.findByIdAndUpdate(change.taskId, updates, { new: true });
-        }
+        // Shift the target date forward by 24 hours
+        if (!task.scheduleConstraint) task.scheduleConstraint = {};
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        task.scheduleConstraint.targetDate = tomorrow;
+
+        await task.save();
       }
     }
 
