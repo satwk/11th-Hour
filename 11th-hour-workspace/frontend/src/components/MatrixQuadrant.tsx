@@ -23,6 +23,7 @@ interface MatrixQuadrantProps {
   onFocusTask?: (task: Task) => void;
   bgColor: string;
   isFlashing?: boolean;
+  refreshTasks?: () => void;
 }
 
 export const MatrixQuadrant: React.FC<MatrixQuadrantProps> = ({
@@ -33,16 +34,16 @@ export const MatrixQuadrant: React.FC<MatrixQuadrantProps> = ({
   onToggleComplete,
   onFocusTask,
   bgColor,
-  isFlashing = false
+  isFlashing = false,
+  refreshTasks
 }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col h-[380px] border border-[#222326] rounded-lg p-5 transition-all bg-[#0a0a0b] relative overflow-hidden ${bgColor} ${
-        isOver ? 'ring-1 ring-[#5e6ad2] border-[#34343a] scale-[1.005]' : ''
-      }`}
+      className={`flex flex-col h-[380px] border border-[#222326] rounded-lg p-5 transition-all bg-[#0a0a0b] relative overflow-hidden ${bgColor} ${isOver ? 'ring-1 ring-[#5e6ad2] border-[#34343a] scale-[1.005]' : ''
+        }`}
     >
       {/* Success boundary flash */}
       <AnimatePresence>
@@ -75,6 +76,7 @@ export const MatrixQuadrant: React.FC<MatrixQuadrantProps> = ({
                 task={task}
                 onToggleComplete={onToggleComplete}
                 onFocusTask={onFocusTask}
+                refreshTasks={refreshTasks}
               />
             ))
           )}

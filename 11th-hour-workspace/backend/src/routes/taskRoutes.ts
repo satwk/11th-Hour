@@ -31,22 +31,35 @@ const taskSchema: GenAISchema = {
       type: SchemaType.BOOLEAN,
       description: 'True if the task involves waiting on someone else, delegation, joint scheduling, or external human communication/blockers (e.g., "email professor", "call landlord", "wait for feedback").'
     },
+    isUrgent: {
+      type: SchemaType.BOOLEAN,
+      description: 'True if the task has an imminent deadline (e.g., "today", "tonight", "ASAP") or blocks another immediate action. Otherwise, false.'
+    },
+    isImportant: {
+      type: SchemaType.BOOLEAN,
+      description: 'True if the task aligns with core goals, career, academics (e.g., "Exams", "Projects"), or health. If it is a basic chore, errand, or favor for someone else, it is false.'
+    },
     scheduleConstraint: {
       type: SchemaType.OBJECT,
+      nullable: true,
+      description: 'Optional schedule constraint details. If the user specifies a day or time (e.g., next Tuesday evening), calculate the exact ISO date for targetDate and categorize timeOfDay. If no time is specified, leave it null.',
       properties: {
         targetDate: {
           type: SchemaType.STRING,
+          nullable: true,
           description: 'The exact calculated date in YYYY-MM-DD format based on today\'s date and relative mentions (e.g. "this Sunday", "next week", "tomorrow"). If a day/date is not mentioned, this must be null.'
         },
         timeOfDay: {
           type: SchemaType.STRING,
+          format: 'enum',
+          enum: ['morning', 'afternoon', 'evening', 'any'],
           description: 'General time of day constraint: "morning", "afternoon", "evening", or "any" if not specified.'
         }
       },
-      description: 'Optional schedule constraint details. Set to null or omit if no date/time constraint is specified.'
+      required: ['timeOfDay']
     }
   },
-  required: ['title', 'quadrant', 'cognitiveLoad', 'estimatedDuration', 'externallyDependent']
+  required: ['title', 'quadrant', 'cognitiveLoad', 'estimatedDuration', 'externallyDependent', 'scheduleConstraint', 'isUrgent', 'isImportant']
 };
 
 const responseSchema: GenAISchema = {
@@ -103,7 +116,7 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
 
     console.log('--- DIAGNOSTIC: Active Gemini Key Length:', apiKey.length, 'Ends with:', apiKey.slice(-4));
 
-    const currentDateTime = new Date().toLocaleString();
+    const currentDateTime = new Date().toISOString();
 
     // Initialize Gemini AI client
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -120,15 +133,10 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
    Evaluate the cognitive complexity of each parsed task numerically and assign it a cognitiveLoad score from 1 (very low focus/routine errand) to 5 (high deep focus/intense concentration).
 3. Estimated Duration: Integer representing minutes.
 4. Externally Dependent: Boolean. Set to true if the task involves waiting on someone else, delegation, joint scheduling, or external human communication/blockers (e.g., "email professor", "call landlord", "wait for response").
-5. Schedule Constraint: If the user mentions a day (e.g., 'this Sunday', 'next week', 'tomorrow'), calculate the exact future date (YYYY-MM-DD) based on today's date.
-   - Put this calculated ISO string in scheduleConstraint.targetDate.
-   - For relative dates:
-     - 'tomorrow' is today + 1 day.
-     - 'this Sunday' is the upcoming Sunday.
-     - 'next week' is typically 7 days from today (or the start of the next week, e.g., next Monday). Be logical.
-     - If no specific date/day is mentioned, targetDate should be null.
-   - Extract any time of day constraint ('morning', 'afternoon', 'evening', 'any') and place it in scheduleConstraint.timeOfDay. Default to 'any' if none is mentioned.
-6. Title: Active, short, action-oriented title (e.g. "Email Sarah about slides", not "Sarah email feedback").`,
+5. Schedule Constraint: If the user specifies a day or time (e.g., next Tuesday evening), use the provided currentDateTime anchor to calculate the exact ISO date for targetDate and categorize timeOfDay. If no time is specified, leave it null.
+6. Title: Active, short, action-oriented title (e.g. "Email Sarah about slides", not "Sarah email feedback").
+7. Urgency (isUrgent): If the task has an imminent deadline (e.g., 'today', 'tonight', 'ASAP') or blocks another immediate action, it is true. Otherwise, false.
+8. Importance (isImportant): If the task aligns with core goals, career, academics (e.g., 'Exams', 'Projects'), or health, it is true. If it is a basic chore, errand, or favor for someone else, it is false.`,
     });
 
     const prompt = `Here is my brain dump: "${rawText}". Extract and structure all the tasks described.`;
@@ -158,10 +166,34 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
     // Save parsed tasks to MongoDB under the user's _id
     const savedTasks = await Promise.all(
       parsedTasks.map(async (t: any) => {
+        // Strict 2x2 Auto-Routing Block
+        let resolvedMatrixQuadrant: 'Do_First' | 'Schedule' | 'Delegate' | 'Eliminate' = 'Eliminate';
+        let resolvedQuadrant: 'Do' | 'Schedule' | 'Delegate' | 'Delete' = 'Delete';
+
+        const urgent = !!t.isUrgent;
+        const important = !!t.isImportant;
+
+        if (urgent && important) {
+          resolvedMatrixQuadrant = 'Do_First';
+          resolvedQuadrant = 'Do';
+        } else if (!urgent && important) {
+          resolvedMatrixQuadrant = 'Schedule';
+          resolvedQuadrant = 'Schedule';
+        } else if (urgent && !important) {
+          resolvedMatrixQuadrant = 'Delegate';
+          resolvedQuadrant = 'Delegate';
+        } else {
+          resolvedMatrixQuadrant = 'Eliminate';
+          resolvedQuadrant = 'Delete';
+        }
+
         const newTask = new Task({
           userId: user._id,
           title: t.title,
-          quadrant: t.quadrant,
+          quadrant: resolvedQuadrant,
+          matrixQuadrant: resolvedMatrixQuadrant,
+          isUrgent: urgent,
+          isImportant: important,
           cognitiveLoad: t.cognitiveLoad,
           estimatedDuration: t.estimatedDuration,
           status: 'Not Started',
@@ -183,6 +215,86 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
       error: 'Failed to process brain dump.',
       details: error.message || error
     });
+  }
+});
+
+// POST /api/tasks - Manually create a task with auto-routing
+router.post('/', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { 
+      userId, 
+      firebaseId, 
+      title, 
+      isUrgent, 
+      isImportant, 
+      cognitiveLoad, 
+      estimatedDuration, 
+      externallyDependent, 
+      scheduleConstraint 
+    } = req.body;
+
+    if (!userId && !firebaseId) {
+      res.status(400).json({ error: 'userId or firebaseId is required' });
+      return;
+    }
+
+    let user = null;
+    if (userId) {
+      try {
+        user = await User.findById(userId);
+      } catch (err) {}
+    }
+    if (!user && firebaseId) {
+      user = await User.findOne({ firebaseId });
+    }
+    if (!user) {
+      user = await User.create({
+        firebaseId: firebaseId || `test-fb-${Date.now()}`,
+        email: 'testuser@example.com',
+        calendarSyncEnabled: false
+      });
+    }
+
+    // Strict 2x2 Auto-Routing Block
+    let resolvedMatrixQuadrant: 'Do_First' | 'Schedule' | 'Delegate' | 'Eliminate' = 'Eliminate';
+    let resolvedQuadrant: 'Do' | 'Schedule' | 'Delegate' | 'Delete' = 'Delete';
+
+    const urgent = !!isUrgent;
+    const important = !!isImportant;
+
+    if (urgent && important) {
+      resolvedMatrixQuadrant = 'Do_First';
+      resolvedQuadrant = 'Do';
+    } else if (!urgent && important) {
+      resolvedMatrixQuadrant = 'Schedule';
+      resolvedQuadrant = 'Schedule';
+    } else if (urgent && !important) {
+      resolvedMatrixQuadrant = 'Delegate';
+      resolvedQuadrant = 'Delegate';
+    } else {
+      resolvedMatrixQuadrant = 'Eliminate';
+      resolvedQuadrant = 'Delete';
+    }
+
+    const newTask = new Task({
+      userId: user._id,
+      title: title || 'Untitled Task',
+      quadrant: resolvedQuadrant,
+      matrixQuadrant: resolvedMatrixQuadrant,
+      isUrgent: urgent,
+      isImportant: important,
+      cognitiveLoad: cognitiveLoad || 1,
+      estimatedDuration: estimatedDuration || 30,
+      status: 'Not Started',
+      externallyDependent: !!externallyDependent,
+      scheduleConstraint: scheduleConstraint || undefined
+    });
+
+    const savedTask = await newTask.save();
+    res.status(201).json(savedTask);
+  } catch (error: any) {
+    console.error('Error creating task manually:', error);
+    res.status(500).json({ error: 'Failed to create task.', details: error.message || error });
   }
 });
 
@@ -240,6 +352,30 @@ router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
   } catch (error: any) {
     console.error('Error updating task:', error);
     res.status(500).json({ error: 'Failed to update task', details: error.message });
+  }
+});
+
+// PATCH /api/tasks/:id/complete - Complete a task
+router.patch('/:id/complete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const task = await Task.findByIdAndUpdate(id, { 
+      status: 'Completed',
+      isCompleted: true
+    }, { new: true });
+
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'Task completed successfully',
+      task
+    });
+  } catch (error: any) {
+    console.error('Error completing task:', error);
+    res.status(500).json({ error: 'Failed to complete task', details: error.message || error });
   }
 });
 

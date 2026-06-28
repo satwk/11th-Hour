@@ -19,6 +19,7 @@ interface EisenhowerMatrixProps {
   onFocusTask?: (task: Task) => void;
   activeId: string | null;
   flashingQuadrants?: ('Do' | 'Schedule' | 'Delegate' | 'Delete')[];
+  refreshTasks?: () => void;
 }
 
 export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
@@ -26,7 +27,8 @@ export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
   onToggleComplete,
   onFocusTask,
   activeId,
-  flashingQuadrants = []
+  flashingQuadrants = [],
+  refreshTasks
 }) => {
   const openTasks = tasks.filter((t) => t.status !== 'Completed');
 
@@ -64,6 +66,7 @@ export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
         onFocusTask={onFocusTask}
         bgColor="bg-red-950/5"
         isFlashing={flashingQuadrants.includes('Do')}
+        refreshTasks={refreshTasks}
       />
 
       {/* Schedule (Not Urgent but Important) */}
@@ -76,6 +79,7 @@ export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
         onFocusTask={onFocusTask}
         bgColor="bg-blue-950/5"
         isFlashing={flashingQuadrants.includes('Schedule')}
+        refreshTasks={refreshTasks}
       />
 
       {/* Delegate (Urgent but Not Important) */}
@@ -88,6 +92,7 @@ export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
         onFocusTask={onFocusTask}
         bgColor="bg-teal-950/5"
         isFlashing={flashingQuadrants.includes('Delegate')}
+        refreshTasks={refreshTasks}
       />
 
       {/* Delete / Eliminate (Not Urgent & Not Important) */}
@@ -100,6 +105,7 @@ export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
         onFocusTask={onFocusTask}
         bgColor="bg-slate-900/5"
         isFlashing={flashingQuadrants.includes('Delete')}
+        refreshTasks={refreshTasks}
       />
 
       {/* Drag Overlay clone that follows the cursor smoothly */}
@@ -110,6 +116,7 @@ export const EisenhowerMatrix: React.FC<EisenhowerMatrixProps> = ({
               task={activeTask}
               onToggleComplete={onToggleComplete}
               isOverlay={true}
+              refreshTasks={refreshTasks}
             />
           </div>
         ) : null}

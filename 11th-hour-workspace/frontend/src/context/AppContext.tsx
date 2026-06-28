@@ -66,12 +66,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await res.json();
       const sanitized = Array.isArray(data)
         ? data.map((t: any) => {
-            if (t.quadrant !== 'Do' && t.quadrant !== 'Schedule' && t.quadrant !== 'Delegate' && t.quadrant !== 'Delete') {
-              console.warn(`Recovered task ${t._id} with invalid quadrant ${t.quadrant}. Resetting to Do.`);
-              return { ...t, quadrant: 'Do' };
-            }
-            return t;
-          })
+          if (t.quadrant !== 'Do' && t.quadrant !== 'Schedule' && t.quadrant !== 'Delegate' && t.quadrant !== 'Delete') {
+            console.warn(`Recovered task ${t._id} with invalid quadrant ${t.quadrant}. Resetting to Do.`);
+            return { ...t, quadrant: 'Do' };
+          }
+          return t;
+        })
         : [];
       setTasks(sanitized);
       setApiError(null);

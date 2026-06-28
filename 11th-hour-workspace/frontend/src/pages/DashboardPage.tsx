@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  DndContext, 
-  useSensor, 
-  useSensors, 
-  PointerSensor, 
+import {
+  DndContext,
+  useSensor,
+  useSensors,
+  PointerSensor,
   TouchSensor,
   closestCorners
 } from '@dnd-kit/core';
@@ -12,19 +12,19 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
 import { useApp, BACKEND_URL, TEST_USER } from '../context/AppContext';
 import { EisenhowerMatrix } from '../components/EisenhowerMatrix';
-import { PlanRevisionStack } from '../components/PlanRevisionStack';
+import { AgentReviewDeck } from '../components/AgentReviewDeck';
 
 export const DashboardPage: React.FC = () => {
-  const { 
-    tasks, 
-    setTasks, 
-    activePlan, 
-    setActivePlan, 
-    fetchTasks, 
-    loading, 
-    flashingQuadrants 
+  const {
+    tasks,
+    setTasks,
+    activePlan,
+    setActivePlan,
+    fetchTasks,
+    loading,
+    flashingQuadrants
   } = useApp();
-  
+
   const navigate = useNavigate();
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -52,7 +52,7 @@ export const DashboardPage: React.FC = () => {
         body: JSON.stringify({ status: newStatus })
       });
       if (!res.ok) throw new Error('Failed to update status');
-      
+
       setTasks((prev) =>
         prev.map((t) => (t._id === id ? { ...t, status: newStatus } : t))
       );
@@ -139,7 +139,7 @@ export const DashboardPage: React.FC = () => {
         acceptedChanges.map(async (c: any) => {
           if (!c.taskId) return;
           const taskId = c.taskId._id || c.taskId;
-          
+
           let updates: any = {};
           if (c.action === 'Urgency Downgraded') {
             const originalTask = tasks.find(t => t._id === taskId);
@@ -150,7 +150,7 @@ export const DashboardPage: React.FC = () => {
           } else if (c.action === 'Task Reslotted') {
             updates.status = 'In Progress';
           }
-          
+
           await fetch(`${BACKEND_URL}/tasks/${taskId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -170,11 +170,9 @@ export const DashboardPage: React.FC = () => {
       }).catch(() => null);
 
       setActivePlan(null);
-      await fetchTasks();
-      alert('Plan revisions synced successfully with the Database.');
     } catch (err) {
-      console.error(err);
-      alert('Failed to commit plan changes.');
+      console.error('Failed to sync plan revisions:', err);
+      throw err;
     }
   };
 
@@ -206,8 +204,8 @@ export const DashboardPage: React.FC = () => {
             <h2 className="text-base font-semibold text-[#f7f8f8] tracking-tight">Eisenhower Priority Matrix</h2>
             <p className="text-xs text-[#8a8f98] mt-0.5">Drag cards to distribute load based on urgency and importance.</p>
           </div>
-          <DndContext 
-            sensors={sensors} 
+          <DndContext
+            sensors={sensors}
             collisionDetection={closestCorners}
             onDragStart={(event) => setActiveId(event.active.id as string)}
             onDragCancel={() => setActiveId(null)}
@@ -219,6 +217,7 @@ export const DashboardPage: React.FC = () => {
               onFocusTask={(task) => navigate(`/focus?taskId=${task._id}`)}
               activeId={activeId}
               flashingQuadrants={flashingQuadrants}
+              refreshTasks={fetchTasks}
             />
           </DndContext>
         </div>
@@ -226,11 +225,10 @@ export const DashboardPage: React.FC = () => {
         {/* AI Action Revision stack in right sidebar column */}
         <div className="lg:col-span-1">
           {activePlan ? (
-            <PlanRevisionStack
+            <AgentReviewDeck
               plan={activePlan}
               onCommit={handleCommitPlan}
               onDismiss={() => setActivePlan(null)}
-              onSyncComplete={fetchTasks}
               refreshTasks={fetchTasks}
               loading={loading}
             />

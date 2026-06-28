@@ -356,6 +356,7 @@ router.post('/plan-revisions/:id/confirm', async (req: Request, res: Response): 
         // Logic map: If the AI action is requeue or downgrade, update the task's matrixQuadrant / quadrant to 'Schedule' (to defer it)
         if (change.action === 'requeue' || change.action === 'downgrade') {
           updates.quadrant = 'Schedule';
+          updates.matrixQuadrant = 'Schedule';
         }
 
         if (Object.keys(updates).length > 0) {

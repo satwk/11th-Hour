@@ -207,7 +207,10 @@ router.post('/schedule', async (req: Request, res: Response): Promise<void> => {
     const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const hasTargetDate = !!(task.scheduleConstraint && task.scheduleConstraint.targetDate);
-    const targetDateStr = task.scheduleConstraint?.targetDate; // e.g. "2026-06-28"
+    const targetDateVal = task.scheduleConstraint?.targetDate;
+    const targetDateStr = targetDateVal instanceof Date
+      ? targetDateVal.toISOString().split('T')[0]
+      : targetDateVal;
     const timeOfDay = task.scheduleConstraint?.timeOfDay || 'any';
 
     let timeMinDate = now;
@@ -368,6 +371,10 @@ CRITICAL DIRECTIVE: You must strictly distinguish between 'Physical Errands' (e.
 - If it is Desk Work, write a title indicating the focused deliverable.
 
 STRICT ANTI-SLOP MICRO-STEPS RULE:
+1. Zero Hallucination Rule: You are strictly forbidden from inventing specific sub-tasks, locations, or topics that were not explicitly stated in the user's raw input.
+2. Semantic Differentiation: If the task is a social meeting, errand, or physical event, DO NOT generate micro-steps. Output a single, clean, generic description like 'Attend scheduled event' or 'Complete physical errand.'
+3. Vague Actionability: If generating steps for general study or desk work (e.g., 'DSA prep'), keep the steps abstract and structural (e.g., 'Gather study materials', 'Complete practice problems', 'Review concepts') rather than guessing the exact academic topic.
+
 If a task is a simple physical errand (e.g. 'Buy fish food', 'Walk dog') OR is estimated to take under 45 minutes:
 - DO NOT generate generic corporate/management sub-steps or filler descriptions (such as 'Break down task', 'Plan details', or 'Execute steps').
 - Instead, return a single, literal instruction (e.g., 'Drive to pet store and purchase fish food', 'Take dog for a walk around the block').

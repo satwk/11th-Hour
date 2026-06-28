@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Link2, CheckCircle2, Clock } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { BACKEND_URL } from '../context/AppContext';
 
 interface Task {
   _id: string;
@@ -19,14 +20,18 @@ interface TaskCardProps {
   onToggleComplete: (id: string, currentStatus: string) => void;
   onFocusTask?: (task: Task) => void;
   isOverlay?: boolean;
+  refreshTasks?: () => void;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({ 
-  task, 
-  onToggleComplete, 
+export const TaskCard: React.FC<TaskCardProps> = ({
+  task,
+  onToggleComplete,
   onFocusTask,
-  isOverlay = false
+  isOverlay = false,
+  refreshTasks
 }) => {
+  const [isStruck, setIsStruck] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
   const {
     attributes,
     listeners,
@@ -65,9 +70,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       ref={dragRef}
       style={style}
       {...dragProps}
-      className={`group relative bg-[#0f1011] border border-[#222326] rounded-md p-4 hover:bg-[#141516] transition-all hover:border-[#34343a] select-none ${
-        task.status === 'Completed' ? 'opacity-40 bg-[#0c0d0e] border-[#1d1f23]' : ''
-      }`}
+      className={`group relative bg-[#0f1011] border border-[#222326] rounded-md p-4 hover:bg-[#141516] transition-all duration-500 ease-in-out select-none ${isCompleting ? 'opacity-0 scale-95 h-0 mb-0 !p-0 !border-0 overflow-hidden' : 'opacity-100 scale-100'
+        } ${task.status === 'Completed' ? 'opacity-40 bg-[#0c0d0e] border-[#1d1f23]' : ''
+        }`}
     >
       <div className="flex items-start space-x-3">
         {/* Completion Checkbox */}
@@ -75,23 +80,47 @@ export const TaskCard: React.FC<TaskCardProps> = ({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            onToggleComplete(task._id, task.status);
+            if (task.status === 'Completed') {
+              onToggleComplete(task._id, task.status);
+              return;
+            }
+            setIsStruck(true);
+            setTimeout(() => {
+              setIsCompleting(true);
+              setTimeout(async () => {
+                try {
+                  const res = await fetch(`${BACKEND_URL}/tasks/${task._id}/complete`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' }
+                  });
+                  if (!res.ok) throw new Error('Failed to update task to complete');
+                  if (refreshTasks) {
+                    refreshTasks();
+                  } else {
+                    onToggleComplete(task._id, task.status);
+                  }
+                } catch (err) {
+                  console.error(err);
+                  setIsStruck(false);
+                  setIsCompleting(false);
+                }
+              }, 500);
+            }, 800);
           }}
           className="mt-0.5 text-[#62666d] hover:text-[#5e6ad2] transition-colors cursor-pointer"
         >
           <CheckCircle2
-            className={`w-5 h-5 ${
-              task.status === 'Completed' ? 'fill-emerald-500 text-emerald-500 stroke-none' : 'text-[#62666d]'
-            }`}
+            className={`w-5 h-5 ${task.status === 'Completed' || isStruck ? 'fill-emerald-500 text-emerald-500 stroke-none' : 'text-[#62666d]'
+              }`}
           />
         </button>
 
         {/* Task Title */}
         <div className="flex-1 min-w-0">
           <p
-            className={`text-sm font-normal text-[#f7f8f8] leading-snug break-words ${
-              task.status === 'Completed' ? 'line-through text-[#62666d]' : ''
-            }`}
+            className={`text-sm font-normal leading-snug break-words transition-all duration-300 ${isStruck || isCompleting ? 'line-through text-gray-500' : 'text-white'
+              } ${!isStruck && !isCompleting && task.status === 'Completed' ? 'line-through text-[#62666d]' : ''
+              }`}
           >
             {task.title}
           </p>
