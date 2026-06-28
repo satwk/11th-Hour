@@ -19,6 +19,7 @@ export const SyncPage: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [scheduleResult, setScheduleResult] = useState<any | null>(null);
   const [scheduling, setScheduling] = useState<boolean>(false);
+  const selectedTask = tasks.find((t) => t._id === selectedTaskId);
 
   // Check URL hash for OAuth redirect token
   useEffect(() => {
@@ -205,7 +206,7 @@ export const SyncPage: React.FC = () => {
                   <option value="">-- Choose Task --</option>
                   {schedulableTasks.map((t) => (
                     <option key={t._id} value={t._id}>
-                      {t.title} ({t.estimatedDuration}m · {t.cognitiveLoad} load)
+                      {t.title} ({t.scheduleConstraint?.durationOverride != null ? t.scheduleConstraint.durationOverride : t.estimatedDuration}m · {t.cognitiveLoad} load)
                     </option>
                   ))}
                 </select>
@@ -216,7 +217,11 @@ export const SyncPage: React.FC = () => {
                 disabled={!googleConnected || !selectedTaskId || scheduling}
                 className="w-full bg-[#5e6ad2] hover:bg-[#828fff] text-white font-medium text-xs py-2.5 px-4 rounded-md transition-colors shadow-sm disabled:bg-[#141516] disabled:text-[#62666d] disabled:cursor-not-allowed cursor-pointer"
               >
-                {scheduling ? 'Finding Slot & Booking...' : 'Schedule in First Available Slot'}
+                {scheduling 
+                  ? 'Finding Slot & Booking...' 
+                  : (selectedTask?.scheduleConstraint?.exactStartTime 
+                      ? 'Sync to Exact Time' 
+                      : 'Find Next Available Slot')}
               </button>
             </form>
 

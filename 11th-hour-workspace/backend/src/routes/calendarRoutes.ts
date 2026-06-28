@@ -45,7 +45,7 @@ const getUTCForLocalTime = (dateStr: string, timeStr: string, tz: string): Date 
     const parts = formatter.formatToParts(baseUTC);
     const p: Record<string, string> = {};
     parts.forEach(part => { p[part.type] = part.value; });
-    
+
     const formattedYear = Number(p.year);
     const formattedMonth = Number(p.month);
     const formattedDay = Number(p.day);
@@ -66,7 +66,7 @@ const getUTCForLocalTime = (dateStr: string, timeStr: string, tz: string): Date 
 
     const actualUTC = Date.UTC(formattedYear, formattedMonth - 1, formattedDay, formattedHour, formattedMinute, formattedSecond);
     const expectedUTC = Date.UTC(targetYear, targetMonth - 1, targetDay, targetHour, targetMinute, targetSecond);
-    
+
     const diff = expectedUTC - actualUTC;
     return new Date(baseUTC.getTime() + diff);
   } catch (err) {
@@ -191,6 +191,9 @@ router.post('/schedule', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    console.log('Syncing Task Target Date:', task.scheduleConstraint?.targetDate);
+    console.log('Syncing Task Exact Start Time:', task.scheduleConstraint?.exactStartTime);
+
     const oauth2Client = getOAuthClient(user);
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
@@ -230,115 +233,144 @@ router.post('/schedule', async (req: Request, res: Response): Promise<void> => {
       }
     }
 
-    // 1. Query free/busy schedule using calendar.freebusy.query
-    const fbResponse = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: timeMinDate.toISOString(),
-        timeMax: timeMaxDate.toISOString(),
-        items: [{ id: 'primary' }]
+    let finalStart: string;
+    let finalEnd: string;
+
+    if (task.scheduleConstraint && task.scheduleConstraint.exactStartTime) {
+      // STRUCT FIX: Absolute Time Bypass
+      const startDateObj = new Date(task.scheduleConstraint.exactStartTime);
+      
+      // Past-Midnight Protection: If the target time has already passed today, assume the user meant the upcoming occurrence
+      if (startDateObj < new Date()) {
+        startDateObj.setDate(startDateObj.getDate() + 1);
       }
-    });
+      
+      finalStart = startDateObj.toISOString();
+      
+      const durationMinutes = task.scheduleConstraint.durationOverride || 60;
+      finalEnd = new Date(startDateObj.getTime() + durationMinutes * 60000).toISOString();
+      
+      console.log('Bypassing freebusy. Forcing exact slot:', finalStart, 'to', finalEnd);
+    } else {
+      // Fallback only if no exact time exists
+      console.log('No exact time found. Falling back to search loop...');
 
-    const busySlots = (fbResponse.data.calendars?.primary?.busy || [])
-      .map((slot: any) => {
-        const start = new Date(slot.start || '');
-        const end = new Date(slot.end || '');
-        return { start, end };
-      })
-      .filter((s) => !isNaN(s.start.getTime()) && !isNaN(s.end.getTime()))
-      .sort((a, b) => a.start.getTime() - b.start.getTime());
-
-    // 2. Find first candidate gap matching constraints
-    const durationMs = task.estimatedDuration * 60 * 1000;
-    
-    // Set candidateTime to search start
-    let candidateTime = new Date(timeMinDate.getTime());
-    if (!hasTargetDate) {
-      candidateTime = new Date(now.getTime() + 15 * 60 * 1000); // 15m from now for normal
-    }
-    
-    // Round to next 15-minute interval
-    candidateTime.setMinutes(Math.ceil(candidateTime.getMinutes() / 15) * 15, 0, 0);
-
-    let foundSlot: { start: Date; end: Date } | null = null;
-    const maxSearchTime = timeMaxDate.getTime();
-
-    while (candidateTime.getTime() < maxSearchTime) {
-      const candidateStart = new Date(candidateTime.getTime());
-      const candidateEnd = new Date(candidateTime.getTime() + durationMs);
-
-      // Check timezone-specific waking hours
-      let isWakingHours = true;
-      try {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-          timeZone: timezone,
-          hour: 'numeric',
-          minute: 'numeric',
-          hour12: false
-        });
-        
-        const startParts = formatter.formatToParts(candidateStart);
-        const endParts = formatter.formatToParts(candidateEnd);
-        
-        const getHourAndMinute = (parts: Intl.DateTimeFormatPart[]) => {
-          const p: Record<string, string> = {};
-          parts.forEach(part => { p[part.type] = part.value; });
-          return { hour: Number(p.hour), minute: Number(p.minute) };
-        };
-
-        const start = getHourAndMinute(startParts);
-        const end = getHourAndMinute(endParts);
-        
-        const startDecimal = start.hour + start.minute / 60;
-        const endDecimal = end.hour + end.minute / 60;
-
-        if (timeOfDay === 'morning') {
-          isWakingHours = startDecimal >= 8 && endDecimal <= 12;
-        } else if (timeOfDay === 'afternoon') {
-          isWakingHours = startDecimal >= 12 && endDecimal <= 17;
-        } else if (timeOfDay === 'evening') {
-          isWakingHours = startDecimal >= 17 && endDecimal <= 22;
-        } else { // 'any' or default
-          isWakingHours = startDecimal >= 8 && endDecimal <= 20;
+      // 1. Query free/busy schedule using calendar.freebusy.query
+      const fbResponse = await calendar.freebusy.query({
+        requestBody: {
+          timeMin: timeMinDate.toISOString(),
+          timeMax: timeMaxDate.toISOString(),
+          items: [{ id: 'primary' }]
         }
-      } catch (err) {
-        // Fallback using UTC hours
-        const startHour = candidateStart.getUTCHours();
-        const endHour = candidateEnd.getUTCHours();
-        if (timeOfDay === 'morning') {
-          isWakingHours = startHour >= 8 && endHour <= 12;
-        } else if (timeOfDay === 'afternoon') {
-          isWakingHours = startHour >= 12 && endHour <= 17;
-        } else if (timeOfDay === 'evening') {
-          isWakingHours = startHour >= 17 && endHour <= 22;
+      });
+
+      const busySlots = (fbResponse.data.calendars?.primary?.busy || [])
+        .map((slot: any) => {
+          const start = new Date(slot.start || '');
+          const end = new Date(slot.end || '');
+          return { start, end };
+        })
+        .filter((s) => !isNaN(s.start.getTime()) && !isNaN(s.end.getTime()))
+        .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+      // 2. Find first candidate gap matching constraints
+      const durationMinutes = task.scheduleConstraint?.durationOverride != null
+        ? task.scheduleConstraint.durationOverride
+        : task.estimatedDuration;
+      const durationMs = durationMinutes * 60 * 1000;
+      
+      // Set candidateTime to search start
+      let candidateTime = new Date(timeMinDate.getTime());
+      if (!hasTargetDate) {
+        candidateTime = new Date(now.getTime() + 15 * 60 * 1000); // 15m from now for normal
+      }
+      
+      // Round to next 15-minute interval
+      candidateTime.setMinutes(Math.ceil(candidateTime.getMinutes() / 15) * 15, 0, 0);
+
+      let foundSlot: { start: Date; end: Date } | null = null;
+      const maxSearchTime = timeMaxDate.getTime();
+
+      while (candidateTime.getTime() < maxSearchTime) {
+        const candidateStart = new Date(candidateTime.getTime());
+        const candidateEnd = new Date(candidateTime.getTime() + durationMs);
+
+        // Check timezone-specific waking hours
+        let isWakingHours = true;
+        try {
+          const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            hour: 'numeric',
+            minute: 'numeric',
+            hour12: false
+          });
+          
+          const startParts = formatter.formatToParts(candidateStart);
+          const endParts = formatter.formatToParts(candidateEnd);
+          
+          const getHourAndMinute = (parts: Intl.DateTimeFormatPart[]) => {
+            const p: Record<string, string> = {};
+            parts.forEach(part => { p[part.type] = part.value; });
+            return { hour: Number(p.hour), minute: Number(p.minute) };
+          };
+
+          const start = getHourAndMinute(startParts);
+          const end = getHourAndMinute(endParts);
+          
+          const startDecimal = start.hour + start.minute / 60;
+          const endDecimal = end.hour + end.minute / 60;
+
+          if (timeOfDay === 'morning') {
+            isWakingHours = startDecimal >= 8 && endDecimal <= 12;
+          } else if (timeOfDay === 'afternoon') {
+            isWakingHours = startDecimal >= 12 && endDecimal <= 17;
+          } else if (timeOfDay === 'evening') {
+            isWakingHours = startDecimal >= 17 && endDecimal <= 22;
+          } else { // 'any' or default
+            isWakingHours = startDecimal >= 8 && endDecimal <= 20;
+          }
+        } catch (err) {
+          // Fallback using UTC hours
+          const startHour = candidateStart.getUTCHours();
+          const endHour = candidateEnd.getUTCHours();
+          if (timeOfDay === 'morning') {
+            isWakingHours = startHour >= 8 && endHour <= 12;
+          } else if (timeOfDay === 'afternoon') {
+            isWakingHours = startHour >= 12 && endHour <= 17;
+          } else if (timeOfDay === 'evening') {
+            isWakingHours = startHour >= 17 && endHour <= 22;
+          } else {
+            isWakingHours = startHour >= 8 && endHour <= 20;
+          }
+        }
+
+        if (!isWakingHours) {
+          candidateTime = new Date(candidateTime.getTime() + 15 * 60 * 1000);
+          continue;
+        }
+
+        // Check overlap
+        const overlappingEvent = busySlots.find(
+          (slot) => candidateStart < slot.end && candidateEnd > slot.start
+        );
+
+        if (overlappingEvent) {
+          candidateTime = new Date(overlappingEvent.end.getTime());
+          candidateTime.setMinutes(Math.ceil(candidateTime.getMinutes() / 15) * 15, 0, 0);
         } else {
-          isWakingHours = startHour >= 8 && endHour <= 20;
+          foundSlot = { start: candidateStart, end: candidateEnd };
+          break;
         }
       }
 
-      if (!isWakingHours) {
-        candidateTime = new Date(candidateTime.getTime() + 15 * 60 * 1000);
-        continue;
+      if (!foundSlot) {
+        const dateInfo = hasTargetDate ? `on target date ${targetDateStr}` : 'in the next 7 days';
+        res.status(400).json({ error: `No available calendar slot found ${dateInfo} within the specified hours.` });
+        return;
       }
 
-      // Check overlap
-      const overlappingEvent = busySlots.find(
-        (slot) => candidateStart < slot.end && candidateEnd > slot.start
-      );
-
-      if (overlappingEvent) {
-        candidateTime = new Date(overlappingEvent.end.getTime());
-        candidateTime.setMinutes(Math.ceil(candidateTime.getMinutes() / 15) * 15, 0, 0);
-      } else {
-        foundSlot = { start: candidateStart, end: candidateEnd };
-        break;
-      }
-    }
-
-    if (!foundSlot) {
-      const dateInfo = hasTargetDate ? `on target date ${targetDateStr}` : 'in the next 7 days';
-      res.status(400).json({ error: `No available calendar slot found ${dateInfo} within the specified hours.` });
-      return;
+      finalStart = foundSlot.start.toISOString();
+      finalEnd = foundSlot.end.toISOString();
     }
 
     // 3. AI-generate micro-chunk task details using Gemini 2.0 Flash
@@ -384,7 +416,7 @@ Return structured JSON output matching the requested schema.`
       });
 
       const prompt = `Original Task Title: "${task.title}"\nEstimated Duration: ${task.estimatedDuration}m\nCognitive Load: ${task.cognitiveLoad}\n\nOutput a micro-chunk title and steps in JSON.`;
-      
+
       const aiResult = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
@@ -417,8 +449,8 @@ Return structured JSON output matching the requested schema.`
       requestBody: {
         summary: `[11th Hour] ${parsedAI.microTitle}`,
         description: `Micro-steps to complete in this session:\n${parsedAI.steps.map((s: string) => `• ${s}`).join('\n')}\n\nScheduled automatically by 11th Hour.`,
-        start: { dateTime: foundSlot.start.toISOString() },
-        end: { dateTime: foundSlot.end.toISOString() },
+        start: { dateTime: finalStart, timeZone: 'Asia/Kolkata' },
+        end: { dateTime: finalEnd, timeZone: 'Asia/Kolkata' },
         colorId: '6' // Berry/purple color index
       }
     });
@@ -432,7 +464,7 @@ Return structured JSON output matching the requested schema.`
       success: true,
       message: 'AI micro-chunk task scheduled successfully.',
       event: event.data,
-      slot: foundSlot,
+      slot: { start: new Date(finalStart), end: new Date(finalEnd) },
       aiDetails: parsedAI
     });
 

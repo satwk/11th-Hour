@@ -13,6 +13,12 @@ interface Task {
   estimatedDuration: number;
   status: 'Not Started' | 'In Progress' | 'Completed';
   externallyDependent: boolean;
+  scheduleConstraint?: {
+    targetDate?: string;
+    timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'any';
+    exactStartTime?: string | null;
+    durationOverride?: number | null;
+  };
 }
 
 interface TaskCardProps {
@@ -134,7 +140,9 @@ export const TaskCard: React.FC<TaskCardProps> = ({
             {/* Estimated Duration */}
             <span className="flex items-center text-[10px] font-mono text-[#8a8f98] bg-[#141516] px-2 py-0.5 rounded border border-[#222326]">
               <Clock className="w-3.5 h-3.5 mr-1 text-[#62666d]" />
-              {task.estimatedDuration}m
+              {task.scheduleConstraint?.durationOverride != null 
+                ? `${task.scheduleConstraint.durationOverride}m` 
+                : `${task.estimatedDuration}m`}
             </span>
 
             {/* External Dependency Icon */}

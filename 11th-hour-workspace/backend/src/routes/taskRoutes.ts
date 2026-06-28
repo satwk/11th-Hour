@@ -54,6 +54,16 @@ const taskSchema: GenAISchema = {
           format: 'enum',
           enum: ['morning', 'afternoon', 'evening', 'any'],
           description: 'General time of day constraint: "morning", "afternoon", "evening", or "any" if not specified.'
+        },
+        exactStartTime: {
+          type: SchemaType.STRING,
+          nullable: true,
+          description: 'Calculated exact ISO timestamp (e.g. 2026-06-29T21:30:00.000Z) if the user explicitly states an exact start time (e.g. "at 9:30 PM", "tomorrow at 2 PM"). Leave null if not specified.'
+        },
+        durationOverride: {
+          type: SchemaType.INTEGER,
+          nullable: true,
+          description: 'Calculated total duration in minutes if the user explicitly specifies a time range or duration (e.g. "6-9 PM", "for 2 hours"). Leave null if not specified.'
         }
       },
       required: ['timeOfDay']
@@ -134,8 +144,9 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
 3. Estimated Duration: Integer representing minutes.
 4. Externally Dependent: Boolean. Set to true if the task involves waiting on someone else, delegation, joint scheduling, or external human communication/blockers (e.g., "email professor", "call landlord", "wait for response").
 5. Schedule Constraint: If the user specifies a day or time (e.g., next Tuesday evening), use the provided currentDateTime anchor to calculate the exact ISO date for targetDate and categorize timeOfDay. If no time is specified, leave it null.
+   - If the user explicitly states an exact time (e.g., 'at 9:30 PM' or 'tomorrow at 2 PM'), calculate the exact ISO timestamp using the provided currentDateTime anchor and output it as exactStartTime. You MUST generate the exactStartTime ISO string in the user's local timezone (IST, Asia/Kolkata). Do not output a trailing 'Z' (UTC). Instead, append the explicit IST offset '+05:30'. For example, 4:00 PM on June 29th should be output as '2026-06-29T16:00:00.000+05:30'. If they specify a time range (e.g., '6-9 PM' or 'for 2 hours'), calculate the total minutes and output it as durationOverride. If neither is specified, leave them null.
 6. Title: Active, short, action-oriented title (e.g. "Email Sarah about slides", not "Sarah email feedback").
-7. Urgency (isUrgent): If the task has an imminent deadline (e.g., 'today', 'tonight', 'ASAP') or blocks another immediate action, it is true. Otherwise, false.
+7. Urgency (isUrgent): If the task has an imminent deadline (e.g., 'today', 'tonight', 'ASAP') or blocks another immediate action, it is true. If the task specifies a future scheduled time or date (e.g., 'tomorrow from 4-6 PM' or 'next Tuesday'), it is mathematically NOT urgent right now. You MUST set isUrgent: false. Otherwise, false.
 8. Importance (isImportant): If the task aligns with core goals, career, academics (e.g., 'Exams', 'Projects'), or health, it is true. If it is a basic chore, errand, or favor for someone else, it is false.`,
     });
 
@@ -170,21 +181,29 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
         let resolvedMatrixQuadrant: 'Do_First' | 'Schedule' | 'Delegate' | 'Eliminate' = 'Eliminate';
         let resolvedQuadrant: 'Do' | 'Schedule' | 'Delegate' | 'Delete' = 'Delete';
 
-        const urgent = !!t.isUrgent;
-        const important = !!t.isImportant;
+        let urgent = !!t.isUrgent;
+        let important = !!t.isImportant;
 
-        if (urgent && important) {
-          resolvedMatrixQuadrant = 'Do_First';
-          resolvedQuadrant = 'Do';
-        } else if (!urgent && important) {
+        // OVERRIDE: If the task has an exact scheduled time, it inherently belongs in the Schedule quadrant.
+        if (t.scheduleConstraint && t.scheduleConstraint.exactStartTime) {
+          urgent = false; // Force the flag to match the matrix reality
+          important = true;
           resolvedMatrixQuadrant = 'Schedule';
           resolvedQuadrant = 'Schedule';
-        } else if (urgent && !important) {
-          resolvedMatrixQuadrant = 'Delegate';
-          resolvedQuadrant = 'Delegate';
         } else {
-          resolvedMatrixQuadrant = 'Eliminate';
-          resolvedQuadrant = 'Delete';
+          if (urgent && important) {
+            resolvedMatrixQuadrant = 'Do_First';
+            resolvedQuadrant = 'Do';
+          } else if (!urgent && important) {
+            resolvedMatrixQuadrant = 'Schedule';
+            resolvedQuadrant = 'Schedule';
+          } else if (urgent && !important) {
+            resolvedMatrixQuadrant = 'Delegate';
+            resolvedQuadrant = 'Delegate';
+          } else {
+            resolvedMatrixQuadrant = 'Eliminate';
+            resolvedQuadrant = 'Delete';
+          }
         }
 
         const newTask = new Task({
@@ -198,7 +217,12 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
           estimatedDuration: t.estimatedDuration,
           status: 'Not Started',
           externallyDependent: t.externallyDependent,
-          scheduleConstraint: t.scheduleConstraint || undefined
+          scheduleConstraint: t.scheduleConstraint ? {
+            targetDate: t.scheduleConstraint.targetDate ? new Date(t.scheduleConstraint.targetDate) : undefined,
+            timeOfDay: t.scheduleConstraint.timeOfDay || 'any',
+            exactStartTime: t.scheduleConstraint.exactStartTime ? new Date(t.scheduleConstraint.exactStartTime) : undefined,
+            durationOverride: t.scheduleConstraint.durationOverride != null ? Number(t.scheduleConstraint.durationOverride) : undefined
+          } : undefined
         });
         return await newTask.save();
       })
@@ -221,16 +245,16 @@ router.post('/brain-dump', async (req: Request, res: Response): Promise<void> =>
 // POST /api/tasks - Manually create a task with auto-routing
 router.post('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { 
-      userId, 
-      firebaseId, 
-      title, 
-      isUrgent, 
-      isImportant, 
-      cognitiveLoad, 
-      estimatedDuration, 
-      externallyDependent, 
-      scheduleConstraint 
+    const {
+      userId,
+      firebaseId,
+      title,
+      isUrgent,
+      isImportant,
+      cognitiveLoad,
+      estimatedDuration,
+      externallyDependent,
+      scheduleConstraint
     } = req.body;
 
     if (!userId && !firebaseId) {
@@ -242,7 +266,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     if (userId) {
       try {
         user = await User.findById(userId);
-      } catch (err) {}
+      } catch (err) { }
     }
     if (!user && firebaseId) {
       user = await User.findOne({ firebaseId });
@@ -259,21 +283,29 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     let resolvedMatrixQuadrant: 'Do_First' | 'Schedule' | 'Delegate' | 'Eliminate' = 'Eliminate';
     let resolvedQuadrant: 'Do' | 'Schedule' | 'Delegate' | 'Delete' = 'Delete';
 
-    const urgent = !!isUrgent;
-    const important = !!isImportant;
+    let urgent = !!isUrgent;
+    let important = !!isImportant;
 
-    if (urgent && important) {
-      resolvedMatrixQuadrant = 'Do_First';
-      resolvedQuadrant = 'Do';
-    } else if (!urgent && important) {
+    // OVERRIDE: If the task has an exact scheduled time, it inherently belongs in the Schedule quadrant.
+    if (scheduleConstraint && scheduleConstraint.exactStartTime) {
+      urgent = false; // Force the flag to match the matrix reality
+      important = true;
       resolvedMatrixQuadrant = 'Schedule';
       resolvedQuadrant = 'Schedule';
-    } else if (urgent && !important) {
-      resolvedMatrixQuadrant = 'Delegate';
-      resolvedQuadrant = 'Delegate';
     } else {
-      resolvedMatrixQuadrant = 'Eliminate';
-      resolvedQuadrant = 'Delete';
+      if (urgent && important) {
+        resolvedMatrixQuadrant = 'Do_First';
+        resolvedQuadrant = 'Do';
+      } else if (!urgent && important) {
+        resolvedMatrixQuadrant = 'Schedule';
+        resolvedQuadrant = 'Schedule';
+      } else if (urgent && !important) {
+        resolvedMatrixQuadrant = 'Delegate';
+        resolvedQuadrant = 'Delegate';
+      } else {
+        resolvedMatrixQuadrant = 'Eliminate';
+        resolvedQuadrant = 'Delete';
+      }
     }
 
     const newTask = new Task({
@@ -287,7 +319,12 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
       estimatedDuration: estimatedDuration || 30,
       status: 'Not Started',
       externallyDependent: !!externallyDependent,
-      scheduleConstraint: scheduleConstraint || undefined
+      scheduleConstraint: scheduleConstraint ? {
+        targetDate: scheduleConstraint.targetDate ? new Date(scheduleConstraint.targetDate) : undefined,
+        timeOfDay: scheduleConstraint.timeOfDay || 'any',
+        exactStartTime: scheduleConstraint.exactStartTime ? new Date(scheduleConstraint.exactStartTime) : undefined,
+        durationOverride: scheduleConstraint.durationOverride != null ? Number(scheduleConstraint.durationOverride) : undefined
+      } : undefined
     });
 
     const savedTask = await newTask.save();
@@ -312,7 +349,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     if (userId) {
       try {
         user = await User.findById(userId);
-      } catch (err) {}
+      } catch (err) { }
     }
 
     if (!user && firebaseId) {
@@ -359,7 +396,7 @@ router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
 router.patch('/:id/complete', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const task = await Task.findByIdAndUpdate(id, { 
+    const task = await Task.findByIdAndUpdate(id, {
       status: 'Completed',
       isCompleted: true
     }, { new: true });

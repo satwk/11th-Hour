@@ -16,6 +16,8 @@ export interface ITask {
   scheduleConstraint?: {
     targetDate?: Date;
     timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'any';
+    exactStartTime?: Date | null;
+    durationOverride?: number | null;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -36,7 +38,9 @@ const TaskSchema = new Schema<ITask>({
   lastEscalationStep: { type: Number, default: 0 },
   scheduleConstraint: {
     targetDate: { type: Date },
-    timeOfDay: { type: String, enum: ['morning', 'afternoon', 'evening', 'any'], default: 'any' }
+    timeOfDay: { type: String, enum: ['morning', 'afternoon', 'evening', 'any'], default: 'any' },
+    exactStartTime: { type: Date, default: null },
+    durationOverride: { type: Number, default: null }
   },
 }, {
   timestamps: true

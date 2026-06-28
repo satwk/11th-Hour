@@ -8,6 +8,12 @@ export interface Task {
   estimatedDuration: number;
   status: 'Not Started' | 'In Progress' | 'Completed';
   externallyDependent: boolean;
+  scheduleConstraint?: {
+    targetDate?: string;
+    timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'any';
+    exactStartTime?: string | null;
+    durationOverride?: number | null;
+  };
 }
 
 interface AppContextType {
