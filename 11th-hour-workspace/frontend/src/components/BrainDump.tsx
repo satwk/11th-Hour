@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic } from 'lucide-react';
+import { Mic, MicOff } from 'lucide-react';
 
 interface BrainDumpProps {
   onAnalyze: (rawText: string) => Promise<void>;
@@ -11,6 +11,7 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
 
   const [rawText, setRawText] = useState<string>('');
   const [isListening, setIsListening] = useState(false);
+  const [isMicBlocked, setIsMicBlocked] = useState(false);
   const recognitionRef = useRef<any>(null);
   const isExplicitlyStoppedRef = useRef(true);
 
@@ -18,6 +19,7 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       console.warn("Web Speech API is not supported in this browser.");
+      setIsMicBlocked(true); // Lockout immediately if unsupported
       return;
     }
 
@@ -48,9 +50,16 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
 
     recognition.onerror = (event: any) => {
       console.error("❌ Speech API Error:", event.error);
-      if (event.error === 'not-allowed') {
+      if (event.error === 'not-allowed' || event.error === 'network') {
         isExplicitlyStoppedRef.current = true;
         setIsListening(false);
+        setIsMicBlocked(true); // TRIGGER THE UI LOCKOUT
+        
+        if (event.error === 'network') {
+          alert("Voice dictation is blocked by your browser's privacy shields. Please switch to standard Chrome or Edge.");
+        } else {
+          alert("Microphone access was denied.");
+        }
       }
     };
 
@@ -74,6 +83,8 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
   const toggleVoiceInput = (e: React.MouseEvent) => {
     e.preventDefault(); // CRUCIAL: Blocks form submission and page reloads
     e.stopPropagation(); // Blocks parent element event triggers
+
+    if (isMicBlocked) return;
 
     if (isListening) {
       isExplicitlyStoppedRef.current = true;
@@ -119,18 +130,22 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
           {isSpeechSupported && (
             <button
               type="button"
+              disabled={isMicBlocked}
               onClick={(e) => toggleVoiceInput(e)}
-              disabled={loading}
-              title={isListening ? 'Stop Listening' : 'Start Voice Dictation'}
-              className="absolute right-3 bottom-3 p-1.5 rounded-full hover:bg-[#1c1d1e] focus:outline-none transition-all cursor-pointer"
-            >
-              <Mic
-                className={`w-4 h-4 transition-all ${
-                  isListening
+              title={isMicBlocked ? "Voice blocked by browser privacy settings" : "Voice Dictation"}
+              className={`absolute right-3 bottom-3 p-1.5 rounded-full transition-all duration-300 ${
+                isMicBlocked
+                  ? 'text-gray-700 cursor-not-allowed opacity-50'
+                  : isListening
                     ? 'text-rose-500 animate-pulse drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]'
                     : 'text-gray-400 hover:text-white'
-                }`}
-              />
+              }`}
+            >
+              {isMicBlocked ? (
+                <MicOff className="w-4 h-4" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
             </button>
           )}
           {!isSpeechSupported && (
@@ -138,9 +153,9 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
               type="button"
               disabled
               title="Voice not supported on this browser"
-              className="absolute right-3 bottom-3 p-1.5 rounded-full opacity-30 cursor-not-allowed"
+              className="absolute right-3 bottom-3 p-1.5 rounded-full opacity-30 cursor-not-allowed text-gray-700"
             >
-              <Mic className="w-4 h-4 text-gray-500" />
+              <MicOff className="w-4 h-4" />
             </button>
           )}
         </div>
