@@ -22,10 +22,10 @@ export const Layout: React.FC = () => {
 
   const links = [
     { to: '/dashboard', label: 'Eisenhower Matrix', icon: LayoutGrid },
-    { to: '/capture', label: 'Brain Capture', icon: Keyboard },
-    { to: '/readiness', label: 'Daily Readiness', icon: Sliders },
-    { to: '/focus', label: 'Focus Space', icon: Timer },
-    { to: '/sync', label: 'Google Sync', icon: Calendar },
+    { to: '/dashboard/capture', label: 'Brain Capture', icon: Keyboard },
+    { to: '/dashboard/readiness', label: 'Daily Readiness', icon: Sliders },
+    { to: '/dashboard/focus', label: 'Focus Space', icon: Timer },
+    { to: '/dashboard/sync', label: 'Google Sync', icon: Calendar },
   ];
 
   return (
@@ -60,6 +60,7 @@ export const Layout: React.FC = () => {
             <NavLink
               key={link.to}
               to={link.to}
+              end={link.to === '/dashboard'}
               className={({ isActive }) =>
                 `flex items-center space-x-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all group cursor-pointer ${
                   isActive

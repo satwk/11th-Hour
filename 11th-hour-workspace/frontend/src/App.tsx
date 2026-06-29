@@ -6,16 +6,20 @@ import { CapturePage } from './pages/CapturePage';
 import { ReadinessPage } from './pages/ReadinessPage';
 import { FocusPage } from './pages/FocusPage';
 import { SyncPage } from './pages/SyncPage';
+import { LandingPage } from './pages/LandingPage';
 
 function App() {
   return (
     <AppProvider>
       <BrowserRouter>
         <Routes>
-          {/* Main Layout containing sidebar */}
-          <Route path="/" element={<Layout />}>
+          {/* Public Landing Page */}
+          <Route path="/" element={<LandingPage />} />
+
+          {/* Main Layout containing sidebar under dashboard */}
+          <Route path="/dashboard" element={<Layout />}>
             {/* Dashboard shows matrix board */}
-            <Route path="dashboard" element={<DashboardPage />} />
+            <Route index element={<DashboardPage />} />
             
             {/* Capture shows Brain Dump */}
             <Route path="capture" element={<CapturePage />} />
@@ -28,11 +32,10 @@ function App() {
             
             {/* Sync page manages Calendar configurations */}
             <Route path="sync" element={<SyncPage />} />
-            
-            {/* Default fallback redirects to dashboard */}
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
+
+          {/* Default fallback redirects to Landing Page */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AppProvider>

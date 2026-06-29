@@ -60,7 +60,7 @@ router.get('/google/callback', async (req: Request, res: Response): Promise<void
             <div class="logo">!</div>
             <h1>Authorization Code Missing</h1>
             <p>Google authentication failed because no code was returned. Please try again.</p>
-            <a href="http://localhost:5173/sync" class="btn">Go Back</a>
+            <a href="http://localhost:5173/dashboard/sync" class="btn">Go Back</a>
           </div>
         </body>
       </html>
@@ -108,7 +108,7 @@ router.get('/google/callback', async (req: Request, res: Response): Promise<void
           </style>
           <script>
             setTimeout(() => {
-              window.location.href = "http://localhost:5173/sync";
+              window.location.href = "http://localhost:5173/dashboard/sync";
             }, 3000);
           </script>
         </head>
@@ -117,7 +117,7 @@ router.get('/google/callback', async (req: Request, res: Response): Promise<void
             <div class="logo">11</div>
             <h1>Google Calendar Connected</h1>
             <p>Your Google Calendar connection is secure. You can close this window or you will be redirected back to the sync page in a few seconds.</p>
-            <a href="http://localhost:5173/sync" class="btn">Return to Workspace</a>
+            <a href="http://localhost:5173/dashboard/sync" class="btn">Return to Workspace</a>
           </div>
         </body>
       </html>
@@ -144,7 +144,7 @@ router.get('/google/callback', async (req: Request, res: Response): Promise<void
             <div class="logo">X</div>
             <h1>Authentication Failed</h1>
             <p>We could not securely exchange Google auth credentials. Reason: ${error.message || error}</p>
-            <a href="http://localhost:5173/sync" class="btn">Return to Workspace</a>
+            <a href="http://localhost:5173/dashboard/sync" class="btn">Return to Workspace</a>
           </div>
         </body>
       </html>
