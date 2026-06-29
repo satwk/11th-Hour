@@ -99,60 +99,16 @@ export const LandingPage: React.FC = () => {
 
           {/* Hero Visual Slot 1 */}
           <div className="surface-1 hairline rounded-xl overflow-hidden p-6 lg:p-12 flex flex-col lg:flex-row gap-12 items-center">
-            {/* Eisenhower Matrix */}
-            <div className="w-full lg:w-3/5 grid grid-cols-2 gap-1 aspect-square lg:aspect-auto h-[400px]">
-              <div className="surface-2 hairline p-4 flex flex-col justify-between group">
-                <span className="text-[10px] font-bold text-[#5e6ad2] uppercase tracking-widest">Urgent / Important</span>
-                <div className="space-y-2 opacity-60">
-                  <div className="h-2 w-3/4 bg-[#c6c5d5]/20 rounded"></div>
-                  <div className="h-2 w-1/2 bg-[#c6c5d5]/20 rounded"></div>
-                </div>
-                <div className="material-symbols-outlined text-[#5e6ad2] text-4xl">bolt</div>
-              </div>
-              <div className="surface-2 hairline p-4 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-[#c6c5d5]/50 uppercase tracking-widest">Important / Not Urgent</span>
-                <div className="space-y-2 opacity-30">
-                  <div className="h-2 w-4/5 bg-[#c6c5d5]/10 rounded"></div>
-                </div>
-                <div className="material-symbols-outlined text-[#c6c5d5]/20 text-4xl">calendar_today</div>
-              </div>
-              <div className="surface-2 hairline p-4 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-[#c6c5d5]/50 uppercase tracking-widest">Urgent / Not Important</span>
-                <div className="material-symbols-outlined text-[#c6c5d5]/20 text-4xl">person_add</div>
-              </div>
-              <div className="surface-2 hairline p-4 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-[#c6c5d5]/50 uppercase tracking-widest">Neither</span>
-                <div className="material-symbols-outlined text-[#c6c5d5]/20 text-4xl">delete</div>
-              </div>
-            </div>
-
-            {/* Readiness Ring */}
-            <div className="w-full lg:w-2/5 flex flex-col items-center justify-center space-y-6">
-              <div className="relative w-48 h-48">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
-                  <circle cx="80" cy="80" fill="transparent" r="72" stroke="#23252a" strokeWidth="8"></circle>
-                  <circle 
-                    className="readiness-ring" 
-                    cx="80" 
-                    cy="80" 
-                    fill="transparent" 
-                    r="72" 
-                    stroke="#5e6ad2" 
-                    strokeLinecap="round" 
-                    strokeWidth="8" 
-                    style={{ strokeDasharray: '452.39', strokeDashoffset: '126.67' }}
-                  ></circle>
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-4xl font-bold text-white">72</span>
-                  <span className="text-[10px] uppercase tracking-widest text-[#c6c5d5]/60">Readiness</span>
-                </div>
-              </div>
-              <div className="text-center">
-                <h4 className="font-bold text-[#dee3ec] mb-1">Balanced & Alert</h4>
-                <p className="text-sm text-[#c6c5d5]">Prioritizing deep work before 2PM slump.</p>
-              </div>
-            </div>
+            <img 
+              src="/eisenhower-matrix.jpg" 
+              alt="Eisenhower Matrix Interface" 
+              className="w-full lg:w-1/2 h-auto object-cover rounded-lg border border-[#23252a] shadow-[0_0_30px_rgba(0,0,0,0.5)]" 
+            />
+            <img 
+              src="/ai-intercept.jpg" 
+              alt="AI Intercept Interface" 
+              className="w-full lg:w-1/2 h-auto object-cover rounded-lg border border-[#23252a] shadow-[0_0_30px_rgba(0,0,0,0.5)]" 
+            />
           </div>
         </section>
 
@@ -167,21 +123,11 @@ export const LandingPage: React.FC = () => {
               Stop wrestling with input fields. Tap the mic, speak your chaotic thoughts, and our LLM agent parses priority, tags, and deadlines in real-time.
             </p>
           </div>
-          <div className="surface-1 hairline rounded-xl p-6 min-h-[300px] flex flex-col justify-end relative overflow-hidden">
-            <div className="absolute inset-0 flex items-center justify-center opacity-10">
-              <span className="material-symbols-outlined text-[200px]" style={{ fontVariationSettings: "'wght' 100" }}>mic</span>
-            </div>
-            <div className="space-y-2 relative z-10">
-              <div className="surface-3 hairline p-4 rounded-lg flex items-center justify-between">
-                <span className="text-sm text-[#dee3ec] italic">"Remind me to finish the slide deck before the board meeting tomorrow morning..."</span>
-                <span className="material-symbols-outlined text-[#5e6ad2]">equalizer</span>
-              </div>
-              <div className="flex gap-2">
-                <div className="surface-2 hairline px-2 py-1 rounded text-[10px] text-[#5e6ad2] uppercase font-bold">Priority: High</div>
-                <div className="surface-2 hairline px-2 py-1 rounded text-[10px] text-[#c6c5d5] uppercase font-bold">Tag: Slides</div>
-              </div>
-            </div>
-          </div>
+          <img 
+            src="/voice-braindump.png" 
+            alt="Voice Braindump Interface" 
+            className="w-full h-auto object-cover rounded-lg border border-[#23252a] shadow-[0_0_30px_rgba(0,0,0,0.5)]" 
+          />
         </section>
 
         {/* Feature 2: Matrix */}
