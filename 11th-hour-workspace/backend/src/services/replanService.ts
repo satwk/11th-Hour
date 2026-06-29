@@ -27,8 +27,8 @@ const planChangeSchema: GenAISchema = {
     action: {
       type: SchemaType.STRING,
       format: 'enum',
-      enum: ['reslot', 'rechunk', 'downgrade', 'draft-message', 'requeue'],
-      description: 'The type of AI recommendation: reslot (slot/time change), downgrade (quadrant downgrade), draft-message (delegation draft).'
+      enum: ['defer_to_schedule', 'downgrade_to_shallow', 'promote'],
+      description: 'The type of AI recommendation: defer_to_schedule (move to Q2), downgrade_to_shallow (move to Q3), or promote (move to Q1).'
     },
     reason: {
       type: SchemaType.STRING,
@@ -106,29 +106,45 @@ export const runDailyReplan = async (
   const score = readinessLog.calculatedScore;
   console.log(`Evaluating user ${user.email} with readiness score ${score}`);
 
-  // 3. Check if score is healthy (60 or above)
-  if (score >= 60) {
-    return {
-      success: true,
-      message: `Readiness score is healthy (${score}/100). No daily replanning changes required.`,
-      score,
-      changes: []
-    };
-  }
-
-  // 4. Score is < 60: Find open tasks
-  const openTasks = await Task.find({
+  // 4. Find active Q1 tasks
+  const activeTasks = await Task.find({
     userId: user._id,
-    status: { $ne: 'Completed' }
+    isCompleted: false,
+    $or: [
+      { matrixQuadrant: 'Do_First' },
+      { quadrant: 'Do' }
+    ]
   });
 
-  // Filter tasks with high cognitive load (score 4 or 5)
-  const highLoadTasks = openTasks.filter(t => t.cognitiveLoad >= 4);
+  const currentLoad = activeTasks.reduce((sum, t) => sum + (t.cognitiveLoad || 0), 0);
+  const dailyLimit = 15;
 
-  if (highLoadTasks.length === 0) {
+  console.log('--- READINESS DIAGNOSTIC ---');
+  console.log('Active Q1 Tasks Found:', activeTasks.length);
+  console.log('Total Active Load:', currentLoad);
+  console.log('Daily Limit:', dailyLimit);
+
+  // Fetch tasks on the bench: Q2 tasks due today or earlier, and Q3 tasks
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+
+  const promotableTasks = await Task.find({
+    userId: user._id,
+    isCompleted: false,
+    $or: [
+      { matrixQuadrant: 'Schedule', 'scheduleConstraint.targetDate': { $lte: endOfToday } },
+      { matrixQuadrant: 'Delegate' } // Q3 tasks
+    ]
+  });
+
+  const isSurplusMode = score >= 60 && currentLoad < dailyLimit;
+  const isOverloadMode = score < 60 || currentLoad > dailyLimit;
+  const needsReplan = isOverloadMode || (isSurplusMode && promotableTasks.length > 0);
+
+  if (!needsReplan) {
     return {
       success: true,
-      message: `Readiness score is low (${score}/100), but user has no open "High" cognitive load tasks to replan.`,
+      message: `Readiness score is healthy (${score}/100) and Q1 load is balanced. No daily replanning changes required.`,
       score,
       changes: []
     };
@@ -143,27 +159,52 @@ export const runDailyReplan = async (
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: 'gemini-3.1-flash-lite',
-    systemInstruction: `You are an automated productivity agent. The user is experiencing low readiness today.
-Your job is to review the list of open "High" cognitive load tasks and recommend adjustments for ALL of them to reduce mental strain.
+    systemInstruction: `You are an automated productivity agent. The user is experiencing low readiness today or has a capacity surplus.
+Your job is to review the list of open tasks and recommend adjustments to reduce mental strain or promote items when bandwidth allows.
 The current system date and time is: ${new Date().toISOString()}. Use this as your absolute anchor to calculate any relative dates (like "tomorrow") into strict YYYY-MM-DDTHH:mm:ssZ format for proposedSlot.start and proposedSlot.end (e.g., "2026-06-29T09:00:00Z"). Do not repeat or loop time tokens.
-Adjustments must map strictly to:
-- 'reslot': Push the task to a future slot (e.g. tomorrow, next week). Assign start and end Date strings inside proposedSlot.
-- 'downgrade': Demote the task quadrant from 'Do' to 'Schedule' (since it can wait) or 'Schedule' to 'Delegate'.
-- 'draft-message': Propose to delegate the task and write a draft message they can copy-paste to send to a colleague.
 
-Provide custom, helpful reasoning for each adjustment, referencing directly the user's low energy state.
+CRITICAL INSTRUCTION: You are evaluating the 'Do First' (Urgent & Important) queue. If the currentLoad exceeds the dailyLimit, you MUST propose defer/downgrade/promote actions to bring the load under the limit, regardless of how important or urgent they are. The user lacks the physical capacity to complete them today. Do not hesitate to defer high-priority tasks to tomorrow.
+
+When proposing to remove a task from the 'Do First' (Q1) queue due to overload, you must evaluate its gravity:
+- If it is a critical core objective or heavy project (e.g., major exam prep), use action 'defer_to_schedule' (to postpone it to tomorrow).
+- If it is lighter practice, reading, or 'fluff' (e.g., 'Read a chapter', 'Solve 2 problems'), use action 'downgrade_to_shallow' to move it to the user's Shallow Work (Q3) quadrant so they can clear it out with low energy today.
+
+If currentLoad < dailyLimit, you are in 'Surplus Mode'. The user has spare cognitive bandwidth today.
+Look at the provided promotableTasks. You must propose the promote action to move tasks from the bench into the 'Do First' queue, up to the remaining capacity (dailyLimit - currentLoad).
+Prioritize Q2 tasks that are due today. If there is still space, promote Q3 tasks to clear them out.
+Provide an encouraging 1-sentence reason (e.g., 'Since your readiness is high, you have the bandwidth to tackle this scheduled exam prep today.').
+
 Format the output as a JSON array matching the provided schema.`
   });
 
-  const tasksListStr = highLoadTasks.map(t => (
-    `ID: ${t._id}\nTitle: "${t.title}"\nQuadrant: ${t.quadrant}\nCognitive Load: ${t.cognitiveLoad}\nDuration: ${t.estimatedDuration}m\nExternally Dependent: ${t.externallyDependent}`
-  )).join('\n\n');
+  const payload = {
+    readinessScore: score,
+    currentLoad,
+    dailyLimit,
+    tasks: activeTasks.map(t => ({
+      taskId: t._id.toString(),
+      title: t.title,
+      quadrant: t.quadrant,
+      cognitiveLoad: t.cognitiveLoad,
+      estimatedDuration: t.estimatedDuration,
+      externallyDependent: t.externallyDependent,
+      status: t.status
+    })),
+    promotableTasks: promotableTasks.map(t => ({
+      taskId: t._id.toString(),
+      title: t.title,
+      quadrant: t.quadrant,
+      cognitiveLoad: t.cognitiveLoad,
+      estimatedDuration: t.estimatedDuration,
+      externallyDependent: t.externallyDependent,
+      status: t.status
+    }))
+  };
 
-  const prompt = `User Readiness Score: ${score}/100 (LOW energy/sleep).
-Here are the open High cognitive load tasks:
-${tasksListStr}
+  const prompt = `Here is today's context payload:
+${JSON.stringify(payload, null, 2)}
 
-Propose adjustments to reschedule, downgrade, or delegate these tasks to lower the cognitive load for today.`;
+Analyze the tasks against the readiness score, and output the required PlanRevision modifications as a JSON array.`;
 
   const result = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -190,7 +231,7 @@ Propose adjustments to reschedule, downgrade, or delegate these tasks to lower t
   // 6. Map and save PlanRevision document (with validation of task existence)
   const planRevisionChanges = [];
   for (const c of parsedChanges) {
-    const matchingTask = highLoadTasks.find(t => t._id.toString() === c.taskId);
+    const matchingTask = activeTasks.find(t => t._id.toString() === c.taskId) || promotableTasks.find(t => t._id.toString() === c.taskId);
     if (matchingTask) {
       let proposedSlot = undefined;
       if (c.proposedSlot && c.proposedSlot.start && c.proposedSlot.end) {

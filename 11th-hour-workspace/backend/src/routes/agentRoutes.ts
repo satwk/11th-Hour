@@ -81,10 +81,35 @@ router.post('/daily-replan', async (req: Request, res: Response): Promise<void> 
       });
     }
 
-    // 2. Fetch all Pending or In-Progress tasks
-    const openTasks = await Task.find({
+    // 2. Fetch active tasks strictly for Q1 (Do First) to prevent scope leak of Q3/other tasks
+    const activeTasks = await Task.find({
       userId: user._id,
-      status: { $ne: 'Completed' }
+      isCompleted: false,
+      $or: [
+        { matrixQuadrant: 'Do_First' },
+        { quadrant: 'Do' }
+      ]
+    });
+
+    const currentLoad = activeTasks.reduce((sum, t) => sum + (t.cognitiveLoad || 0), 0);
+    const dailyLimit = 15;
+
+    console.log('--- READINESS DIAGNOSTIC ---');
+    console.log('Active Q1 Tasks Found:', activeTasks.length);
+    console.log('Total Active Load:', currentLoad);
+    console.log('Daily Limit:', dailyLimit);
+
+    // Fetch tasks on the bench: Q2 tasks due today or earlier, and Q3 tasks
+    const benchEndOfToday = new Date();
+    benchEndOfToday.setHours(23, 59, 59, 999);
+
+    const promotableTasks = await Task.find({
+      userId: user._id,
+      isCompleted: false,
+      $or: [
+        { matrixQuadrant: 'Schedule', 'scheduleConstraint.targetDate': { $lte: benchEndOfToday } },
+        { matrixQuadrant: 'Delegate' } // Q3 tasks
+      ]
     });
 
     // 3. Fetch user's absolute latest Readiness Log
@@ -148,14 +173,24 @@ router.post('/daily-replan', async (req: Request, res: Response): Promise<void> 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: 'gemini-3.1-flash-lite',
-      systemInstruction: `You are an autonomous productivity agent. Your task is to evaluate today's tasks, the user's readiness score, and today's free calendar gaps to recommend a list of schedule modifications.
+      systemInstruction: `You are an autonomous productivity agent. Your task is to evaluate today's tasks (which are strictly Q1 'Do First' tasks), the user's readiness score, and today's free calendar gaps to recommend a list of schedule modifications.
 Current local time is: ${now.toLocaleString()}.
 You must apply these rules strictly:
-1. Cognitive Load Cap: Today's scheduled tasks cannot exceed a hard ceiling of 15 aggregate cognitiveLoad points. (Calculated by summing the cognitiveLoad of all active, scheduled tasks for today). If the sum exceeds 15, you must select lower-priority tasks to 'downgrade' (reduce cognitive load) or 'requeue' (defer to tomorrow).
-2. Energy Level Drop: If the readiness score is below 60, any task with a cognitiveLoad >= 4 must be automatically deferred or pushed to later in the evening (action 'reslot' or 'requeue'), citing the low score as the transparent logic justification in the reason field.
-3. Schedule slots: When recommending 'reslot' or 'rechunk', assign proposed start and end times (proposedSlot.start and proposedSlot.end) that fit cleanly inside the provided free calendar gaps.
-4. Output Formatting: Return a JSON array matching the response schema. Every modification must contain a clear, human-readable, one-sentence explanation in the reason field. Do not modify tasks that do not need changes.
-   - You must generate a UNIQUE, 1-sentence reason for why each specific task is being deferred. Do NOT output generic statements about exceeding the cognitive limit. Evaluate the task's title. Example: 'Since your readiness is low today, studying for Operating Systems can be pushed to tomorrow morning when your focus is higher.'`
+1. Cognitive Load Cap: Today's scheduled Q1 tasks cannot exceed a hard ceiling of 15 aggregate cognitiveLoad points. (Calculated by summing the cognitiveLoad of all active Q1 tasks for today). If the sum exceeds 15, you must select tasks to defer or downgrade to bring the load under the limit.
+2. Energy Level Drop: If the readiness score is below 60, any Q1 task with a cognitiveLoad >= 4 must be automatically deferred or downgraded.
+3. Output Formatting: Return a JSON array matching the response schema. Every modification must contain a clear, human-readable, one-sentence explanation in the reason field. Do not modify tasks that do not need changes.
+   - You must generate a UNIQUE, 1-sentence reason for why each specific task is being adjusted. Do NOT output generic statements about exceeding the cognitive limit. Evaluate the task's title. Example: 'Since your readiness is low today, studying for Operating Systems can be pushed to tomorrow morning when your focus is higher.'
+
+CRITICAL INSTRUCTION: You are evaluating the 'Do First' (Urgent & Important) queue. If the currentLoad exceeds the dailyLimit, you MUST propose defer/downgrade/promote actions to bring the load under the limit, regardless of how important or urgent they are. The user lacks the physical capacity to complete them today. Do not hesitate to defer high-priority tasks to tomorrow.
+
+When proposing to remove a task from the 'Do First' (Q1) queue due to overload, you must evaluate its gravity:
+- If it is a critical core objective or heavy project (e.g., major exam prep), use action 'defer_to_schedule' (to postpone it to tomorrow).
+- If it is lighter practice, reading, or 'fluff' (e.g., 'Read a chapter', 'Solve 2 problems'), use action 'downgrade_to_shallow' to move it to the user's Shallow Work (Q3) quadrant so they can clear it out with low energy today.
+
+If currentLoad < dailyLimit, you are in 'Surplus Mode'. The user has spare cognitive bandwidth today.
+Look at the provided promotableTasks. You must propose the promote action to move tasks from the bench into the 'Do First' queue, up to the remaining capacity (dailyLimit - currentLoad).
+Prioritize Q2 tasks that are due today. If there is still space, promote Q3 tasks to clear them out.
+Provide an encouraging 1-sentence reason (e.g., 'Since your readiness is high, you have the bandwidth to tackle this scheduled exam prep today.').`
     });
 
     const planChangeSchema: GenAISchema = {
@@ -168,8 +203,8 @@ You must apply these rules strictly:
         action: {
           type: SchemaType.STRING,
           format: 'enum',
-          enum: ['reslot', 'rechunk', 'downgrade', 'draft-message', 'requeue'],
-          description: 'The action taken on the task.'
+          enum: ['defer_to_schedule', 'downgrade_to_shallow', 'promote'],
+          description: 'The action taken on the task: defer_to_schedule (move to Q2), downgrade_to_shallow (move to Q3), or promote (move to Q1).'
         },
         reason: {
           type: SchemaType.STRING,
@@ -205,8 +240,19 @@ You must apply these rules strictly:
 
     const payload = {
       readinessScore: score,
+      currentLoad,
+      dailyLimit,
       freeCalendarGaps: freeGaps,
-      tasks: openTasks.map(t => ({
+      tasks: activeTasks.map(t => ({
+        taskId: t._id.toString(),
+        title: t.title,
+        quadrant: t.quadrant,
+        cognitiveLoad: t.cognitiveLoad,
+        estimatedDuration: t.estimatedDuration,
+        externallyDependent: t.externallyDependent,
+        status: t.status
+      })),
+      promotableTasks: promotableTasks.map(t => ({
         taskId: t._id.toString(),
         title: t.title,
         quadrant: t.quadrant,
@@ -240,7 +286,7 @@ Analyze the tasks against the readiness score and free calendar gaps, and output
     // 6. Map and save PlanRevision document
     const planRevisionChanges = [];
     for (const c of parsedChanges) {
-      const matchingTask = openTasks.find(t => t._id.toString() === c.taskId);
+      const matchingTask = activeTasks.find(t => t._id.toString() === c.taskId) || promotableTasks.find(t => t._id.toString() === c.taskId);
       if (matchingTask) {
         let proposedSlot = undefined;
         if (c.proposedSlot && c.proposedSlot.start && c.proposedSlot.end) {
@@ -360,22 +406,30 @@ router.post('/plan-revisions/:id/confirm', async (req: Request, res: Response): 
         const task = await Task.findById(change.taskId);
         if (!task) continue;
 
-        // Math: A deferred task inherently loses immediate urgency.
-        task.isUrgent = false; 
-        
-        if (task.isImportant) {
+        if (change.action === 'defer_to_schedule') {
+          task.isUrgent = false; 
+          task.isImportant = true; // Protects its importance
           task.matrixQuadrant = 'Schedule';
           task.quadrant = 'Schedule';
-        } else {
-          task.matrixQuadrant = 'Delegate';
+          // Shift target date forward 24 hours
+          if (!task.scheduleConstraint) task.scheduleConstraint = {};
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          task.scheduleConstraint.targetDate = tomorrow;
+        } 
+        else if (change.action === 'downgrade_to_shallow') {
+          task.isUrgent = true; 
+          task.isImportant = false; // Downgrades importance
+          task.matrixQuadrant = 'Delegate'; // Maps to Q3 (Shallow Work)
           task.quadrant = 'Delegate';
+          // Target date remains today, as it is shallow work
         }
-
-        // Shift the target date forward by 24 hours
-        if (!task.scheduleConstraint) task.scheduleConstraint = {};
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        task.scheduleConstraint.targetDate = tomorrow;
+        else if (change.action === 'promote') {
+          task.isUrgent = true;
+          task.isImportant = true;
+          task.matrixQuadrant = 'Do_First';
+          task.quadrant = 'Do';
+        }
 
         await task.save();
       }

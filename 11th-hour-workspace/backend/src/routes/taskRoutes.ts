@@ -376,6 +376,49 @@ router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const updates = req.body;
 
+    // Synchronize matrixQuadrant, isUrgent, and isImportant when quadrant is updated
+    if (updates.quadrant) {
+      if (updates.quadrant === 'Do') {
+        updates.matrixQuadrant = 'Do_First';
+        updates.isUrgent = true;
+        updates.isImportant = true;
+      } else if (updates.quadrant === 'Schedule') {
+        updates.matrixQuadrant = 'Schedule';
+        updates.isUrgent = false;
+        updates.isImportant = true;
+      } else if (updates.quadrant === 'Delegate') {
+        updates.matrixQuadrant = 'Delegate';
+        updates.isUrgent = true;
+        updates.isImportant = false;
+      } else if (updates.quadrant === 'Delete') {
+        updates.matrixQuadrant = 'Eliminate';
+        updates.isUrgent = false;
+        updates.isImportant = false;
+      }
+    }
+
+    // Bidirectional sync: if isUrgent or isImportant are directly modified
+    if (updates.isUrgent !== undefined || updates.isImportant !== undefined) {
+      const currentTask = await Task.findById(id);
+      if (currentTask) {
+        const urgent = updates.isUrgent !== undefined ? updates.isUrgent : currentTask.isUrgent;
+        const important = updates.isImportant !== undefined ? updates.isImportant : currentTask.isImportant;
+        if (urgent && important) {
+          updates.matrixQuadrant = 'Do_First';
+          updates.quadrant = 'Do';
+        } else if (!urgent && important) {
+          updates.matrixQuadrant = 'Schedule';
+          updates.quadrant = 'Schedule';
+        } else if (urgent && !important) {
+          updates.matrixQuadrant = 'Delegate';
+          updates.quadrant = 'Delegate';
+        } else {
+          updates.matrixQuadrant = 'Eliminate';
+          updates.quadrant = 'Delete';
+        }
+      }
+    }
+
     const task = await Task.findByIdAndUpdate(id, updates, { new: true });
     if (!task) {
       res.status(404).json({ error: 'Task not found' });

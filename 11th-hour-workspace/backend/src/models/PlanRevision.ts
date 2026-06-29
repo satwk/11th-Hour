@@ -2,7 +2,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IPlanChange {
   taskId: Types.ObjectId;
-  action: 'reslot' | 'rechunk' | 'downgrade' | 'draft-message' | 'requeue';
+  action: 'defer_to_schedule' | 'downgrade_to_shallow' | 'promote' | 'reslot' | 'rechunk' | 'downgrade' | 'draft-message' | 'requeue';
   reason: string;
   proposedSlot?: {
     start?: Date;
@@ -26,7 +26,7 @@ const PlanRevisionSchema = new Schema<IPlanRevision>({
   triggerType: { type: String, enum: ['scheduled', 'manual', 'escalation'], required: true },
   changes: [{
     taskId: { type: Schema.Types.ObjectId, ref: 'Task' },
-    action: { type: String, enum: ['reslot', 'rechunk', 'downgrade', 'draft-message', 'requeue'] },
+    action: { type: String, enum: ['defer_to_schedule', 'downgrade_to_shallow', 'promote', 'reslot', 'rechunk', 'downgrade', 'draft-message', 'requeue'] },
     reason: String,
     proposedSlot: { start: Date, end: Date },
     draftMessage: String

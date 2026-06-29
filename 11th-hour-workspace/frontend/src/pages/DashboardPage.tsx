@@ -63,9 +63,8 @@ export const DashboardPage: React.FC = () => {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveId(null);
-    const result = { destination: event.over };
-    if (!result.destination) return;
     const { active, over } = event;
+    if (!over) return;
 
     const taskId = active.id as string;
     let targetQuadrant = over.id as string;

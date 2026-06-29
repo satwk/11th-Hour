@@ -7,7 +7,7 @@ interface PlanChange {
     title: string;
     quadrant: 'Do' | 'Schedule' | 'Delegate' | 'Delete';
   } | null;
-  action: 'Task Reslotted' | 'Urgency Downgraded' | 'Draft ready';
+  action: 'defer_to_schedule' | 'downgrade_to_shallow' | 'promote' | 'Task Reslotted' | 'Urgency Downgraded' | 'Draft ready' | 'reslot' | 'rechunk' | 'downgrade' | 'draft-message' | 'requeue';
   reason: string;
   proposedSlot?: string;
   draftMessage?: string;
@@ -54,6 +54,12 @@ export const PlanRevisionStack: React.FC<PlanRevisionStackProps> = ({
 
   const getBorderColor = (action: string) => {
     switch (action) {
+      case 'defer_to_schedule':
+        return 'border-l-2 border-rose-500';
+      case 'downgrade_to_shallow':
+        return 'border-l-2 border-amber-500';
+      case 'promote':
+        return 'border-l-2 border-emerald-500';
       case 'Task Reslotted':
         return 'border-l-2 border-teal-500';
       case 'Urgency Downgraded':
@@ -89,20 +95,28 @@ export const PlanRevisionStack: React.FC<PlanRevisionStackProps> = ({
     }
   };
 
+  const isSurplusMode = plan && plan.changes && plan.changes.length > 0 && plan.changes[0].action === 'promote';
+
   return (
     <div className="bg-[#0f1011] border border-[#222326] rounded-lg p-6 shadow-md animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
-          <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500/20" />
+          <Sparkles className={`w-5 h-5 ${isSurplusMode ? 'text-teal-500 fill-teal-500/20' : 'text-amber-500 fill-amber-500/20'}`} />
           <h2 className="text-base font-semibold text-[#f7f8f8]">AI Plan Revision</h2>
         </div>
-        <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded">
-          Readiness Alert
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+          isSurplusMode 
+            ? 'bg-teal-900 text-teal-300 border-teal-700/50' 
+            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+        }`}>
+          {isSurplusMode ? 'Capacity Surplus' : 'Readiness Alert'}
         </span>
       </div>
 
       <p className="text-sm text-[#d0d6e0] mb-6">
-        Today's readiness score dropped below 60. The autonomous agent proposes the following changes to lower your cognitive load:
+        {isSurplusMode 
+          ? "Today's readiness score indicates extra focus capacity. The autonomous agent proposes promoting the following items into your Do First list:" 
+          : "Today's readiness score dropped below 60. The autonomous agent proposes the following changes to lower your cognitive load:"}
       </p>
 
       <div className="space-y-4 mb-6">
@@ -122,13 +136,25 @@ export const PlanRevisionStack: React.FC<PlanRevisionStackProps> = ({
                 <div className="flex-1 min-w-0 pr-3">
                   <div className="flex flex-wrap items-center gap-2 mb-1.5">
                     <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
-                      change.action === 'Task Reslotted'
+                      change.action === 'defer_to_schedule'
+                        ? 'bg-rose-900/50 text-rose-400 border-rose-700'
+                        : change.action === 'downgrade_to_shallow'
+                        ? 'bg-amber-900/50 text-amber-400 border-amber-700'
+                        : change.action === 'promote'
+                        ? 'bg-teal-900/50 text-teal-400 border-teal-700'
+                        : change.action === 'Task Reslotted'
                         ? 'bg-teal-500/10 text-teal-400 border-teal-500/20'
                         : change.action === 'Urgency Downgraded'
                         ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                         : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                     }`}>
-                      {change.action}
+                      {change.action === 'defer_to_schedule'
+                        ? 'DEFER'
+                        : change.action === 'downgrade_to_shallow'
+                        ? 'DOWNGRADE'
+                        : change.action === 'promote'
+                        ? 'PROMOTE'
+                        : change.action}
                     </span>
                     {change.proposedSlot && (
                       <span className="text-[9px] font-medium text-[#8a8f98] bg-[#0f1011] px-2 py-0.5 rounded border border-[#222326]">
