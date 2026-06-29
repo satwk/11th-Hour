@@ -376,8 +376,12 @@ router.patch('/:id', async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const updates = req.body;
 
-    // Synchronize matrixQuadrant, isUrgent, and isImportant when quadrant is updated
+    // Validate quadrant to ensure no invalid ObjectIds or strings are saved
     if (updates.quadrant) {
+      if (!['Do', 'Schedule', 'Delegate', 'Delete'].includes(updates.quadrant)) {
+        res.status(400).json({ error: `Invalid quadrant: ${updates.quadrant}` });
+        return;
+      }
       if (updates.quadrant === 'Do') {
         updates.matrixQuadrant = 'Do_First';
         updates.isUrgent = true;
