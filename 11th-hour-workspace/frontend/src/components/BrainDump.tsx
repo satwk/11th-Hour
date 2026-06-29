@@ -111,7 +111,7 @@ export const BrainDump: React.FC<BrainDumpProps> = ({ onAnalyze, loading }) => {
   const isSpeechSupported = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
   return (
-    <div className="bg-[#0f1011] border border-[#222326] rounded-lg p-6 shadow-md">
+    <div className="bg-[#0f1011] border border-[#222326] rounded-lg p-6 shadow-md transition-all duration-300 hover:border-[#5e6ad2]/30 hover:shadow-[0_0_20px_rgba(94,106,210,0.08)]">
       <h2 className="text-lg font-medium text-[#f7f8f8] mb-2">Brain Dump</h2>
       <p className="text-sm text-[#d0d6e0] mb-4">
         Type whatever is on your mind. The AI will categorize them into Eisenhower quadrants, estimate durations, and assess cognitive loads.

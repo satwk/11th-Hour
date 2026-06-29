@@ -1,10 +1,12 @@
 import React from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { LayoutGrid, Keyboard, Sliders, Timer, Calendar } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { motion } from 'framer-motion';
 
 export const Layout: React.FC = () => {
   const { localScore, googleConnected, apiError } = useApp();
+  const location = useLocation();
 
   const getGlowDetails = (score: number) => {
     if (score < 50) {
@@ -107,7 +109,7 @@ export const Layout: React.FC = () => {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative z-10 border border-[#5e6ad2]/40 shadow-[0_0_15px_rgba(94,106,210,0.4),0_0_50px_rgba(94,106,210,0.15)]">
         {/* Connection/API Errors Header Banner */}
         {apiError && (
           <div className="p-3.5 bg-rose-950/20 border-b border-rose-500/20 text-rose-400 text-xs flex items-center justify-between animate-fade-in relative z-20">
@@ -121,7 +123,15 @@ export const Layout: React.FC = () => {
         )}
 
         <div className="flex-1 overflow-y-auto p-8 relative">
-          <Outlet />
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="w-full h-full"
+          >
+            <Outlet />
+          </motion.div>
         </div>
       </main>
     </div>

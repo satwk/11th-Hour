@@ -42,7 +42,7 @@ export const MatrixQuadrant: React.FC<MatrixQuadrantProps> = ({
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col h-[380px] border border-[#222326] rounded-lg p-5 transition-all bg-[#0a0a0b] relative overflow-hidden ${bgColor} ${isOver ? 'ring-1 ring-[#5e6ad2] border-[#34343a] scale-[1.005]' : ''
+      className={`flex flex-col h-[380px] border border-[#222326] rounded-lg p-5 bg-[#0a0a0b] relative overflow-hidden transition-all duration-300 hover:border-[#5e6ad2]/30 hover:shadow-[0_0_20px_rgba(94,106,210,0.08)] ${bgColor} ${isOver ? 'ring-1 ring-[#5e6ad2] border-[#34343a] scale-[1.005]' : ''
         }`}
     >
       {/* Success boundary flash */}
